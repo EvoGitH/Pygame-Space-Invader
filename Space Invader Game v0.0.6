@@ -101,7 +101,7 @@ while running:
             aliens_rect.topleft = (-100, -100)
 
     
-    # Automated script for Alien movement
+    # Alien movement
     aliens_rect.x += alien_speed * dt * 100
     if aliens_rect.right >= screenX or aliens_rect.left <= 0:
         alien_speed = -alien_speed
