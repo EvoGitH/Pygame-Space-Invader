@@ -46,7 +46,8 @@ def player(x, y):
     screen.blit(img_scaled, (x, y))
 
 # Bullet mechanics
-bullets = []
+bullet_rect = None
+bullet_active = False
 bullet_speed = 400
 
 # Game Loop to make sure the window is running/working with all game assets
@@ -75,22 +76,26 @@ while running:
     
     # Shooting Mechanics
 
-    if keys[pygame.K_SPACE]:
-        # Creating bullet at the top-middle of player
+    # Fire bullet
+    if keys[pygame.K_SPACE] and not bullet_active:
         bullet_rect = pygame.Rect(playerX + iconX//2 - 2, playerY, 4, 10)
-        bullets.append(bullet_rect)
+        bullet_active = True
 
-    for bullet in bullets [:]:
-        bullet.y -= bullet_speed * dt # move up
-        if bullet.bottom < 0:
-            bullets.remove(bullet)
+    # Move bullet if active
+    if bullet_active and bullet_rect is not None:
+        bullet_rect.y -= bullet_speed * dt
+        pygame.draw.rect(screen, (255, 255, 0), bullet_rect)
 
-    for bullet in bullets:
-        pygame.draw.rect(screen, (255, 255, 0), bullet) # Yellow Bullets
+        # Remove bullet if it goes off-screen
+        if bullet_rect.bottom < 0:
+            bullet_active = False
+            bullet_rect = None
 
-    for bullet in bullets[:]:
-        if bullet.colliderect(aliens_rect):
-            bullets.remove(bullet)
+    # Collision detection
+    if bullet_active and bullet_rect is not None:
+        if bullet_rect.colliderect(aliens_rect):
+            bullet_active = False
+            bullet_rect = None
             aliens_rect.topleft = (-100, -100)
 
     
