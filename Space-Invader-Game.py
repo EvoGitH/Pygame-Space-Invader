@@ -1,4 +1,6 @@
 import pygame
+import random
+import math
 
 # Initialize the pygame module
 pygame.init()
@@ -13,17 +15,35 @@ clock = pygame.time.Clock()
 ############################################################
 # Title and Icon
 pygame.display.set_caption("Slime Invaders")
-icon = pygame.image.load('Game Assets\Ship.png')
+icon = pygame.image.load('Game Assets/Ship.png')
 pygame.display.set_icon(icon)
 
 ############################################################
 # Image assets
-playerimg = pygame.image.load('Game Assets\Ship.png')
-alienimg = pygame.image.load('Game Assets\Alien.png')
+playerimg = pygame.image.load('Game Assets/Ship.png')
+alienimg = pygame.image.load('Game Assets/Alien.png')
+powerup_threeshot = [
+    pygame.image.load('Game Assets/Threeshot_power1.png').convert_alpha(),
+    pygame.image.load('Game Assets/Threeshot_power2.png').convert_alpha()
+]
 
+############################################################
 # Setting a set pixel size for assets
 iconX = 64
 iconY = 64
+
+############################################################
+# Powerup Configs
+
+powerup_rect = powerup_threeshot[0].get_rect(
+    topleft=(random.randint(50,750), random.randint(350, screenY -50))) # forced second randint to spawn orb in the bottom half of map
+
+# --- Variables for effects ---
+rotation_angle = 0
+flash_frame = 0
+flash_timer = 0
+flash_speed = 250  # milliseconds between flashes
+float_amplitude = 5
 
 ############################################################
 # Player Configs
@@ -44,23 +64,33 @@ font = pygame.font.Font(None, 36)
 alien_speed = 10
 # Creation of multiple enemies
 aliens = []
-for i in range(5): # 5 will spawn in random areas. 
-    alien_rect = alienimg.get_rect(topleft=(i * 100, 50))  # space them out
-    aliens.append(alien_rect)
+for i in range(5): 
+    alien_rect = alienimg.get_rect(topleft=(i * 100, 50))
+    alien = {
+        "rect": alien_rect,
+        "just_spawned": True
+    }
+    aliens.append(alien)
 
 ############################################################
-
 # Shooting configs
+
 bullet_rect = None
 bullet_active = False
 bullet_speed = 400
 
+bullets = []
+bullet_cooldown = 400
+last_shot_time = 0
+multi_shot_enabled = True
+
 ############################################################
 # Enemy Wave code
-
 game_state = "playing"
 level = 1
 alien_direction = 1
+EDGE_BUFFER = 5 # Amount of Pixels
+DROP_AMOUNT = 20
 
 ############################################################
 # Heart Health *animation* asset.
@@ -74,9 +104,33 @@ heart_animation_speed = 250
 
 ############################################################
 
-# Function is created using .blit() to draw player images on top of window.
+# Functions
 def player(x, y):
     screen.blit(playerimg, (x, y))
+
+def spawn_aliens(level): 
+    global aliens, alien_speed, bullets
+    bullets = []
+    aliens = []
+    rows = min(3, 2 + level)   # increase rows up to 3 #Change this number to update the minimum rows.
+    cols = min(8, 3 + level)  # increase columns up to 5 #Change this number to update the minimum columns.
+
+    vertical_padding = 50
+    alien_width = alienimg.get_width()
+    alien_height = alienimg.get_width()
+
+    total_width = cols * alien_width + (cols - 1) * 20
+    start_x = (screenX - total_width) // 2
+    start_y = vertical_padding
+
+    for row in range(rows):
+        for col in range(cols):
+            x = start_x + col * (alien_width)
+            y = start_y + row * (alien_height)
+            alien_rect = alienimg.get_rect(topleft=(x, y))
+            aliens.append({"rect": alien_rect, "just_spawned": True})
+
+    alien_speed = 5 * (1 + level * 0.1)  # increase speed, 10% faster per level.
 
 ############################################################
 #######----------------Main Loop Code----------------#######
@@ -85,6 +139,16 @@ def player(x, y):
 # Game Loop to make sure the window is running/working with all game assets
 running = True
 while running:
+    
+############################################################ [Put new code underneath these configs to make things work] ############################################################
+    # Required Configs
+
+    player_rect = pygame.Rect(playerX, playerY, iconX, iconY) # Creating Collision detection between Alien & Player
+    dt = clock.tick(60) / 1000 # Using clock to make sure the game is running properly on a certain amount of FPS
+    screen.fill('black') #Creates the background colour
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
 
 ############################################################
     # Levels/Waves code
@@ -105,16 +169,24 @@ while running:
             level += 1
             spawn_aliens(level)
             game_state = "playing"
-    
-############################################################
-    # Required Configs
 
-    player_rect = pygame.Rect(playerX, playerY, iconX, iconY) # Creating Collision detection between Alien & Player
-    dt = clock.tick(60) / 1000 # Using clock to make sure the game is running properly on a certain amount of FPS
-    screen.fill('black') #Creates the background colour
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+############################################################
+    # Code for threeshot powerup
+
+    current_img = powerup_threeshot[flash_frame]
+    # Update flash
+    flash_timer += dt
+    if flash_timer >= flash_speed:
+        flash_timer = 0
+        flash_frame = (flash_frame + 1) % len(powerup_threeshot)
+
+    rotated_img = pygame.transform.rotate(current_img, rotation_angle)
+    rotated_rect = rotated_img.get_rect(center=powerup_rect.center)
+    # Floating animation
+    float_offset = math.sin(pygame.time.get_ticks() * 0.005) * float_amplitude
+    rotated_rect.y += float_offset
+
+    screen.blit(rotated_img, rotated_rect)
 
 ############################################################
     # Heart Animation:
@@ -137,44 +209,40 @@ while running:
         playerY -= player_speed
     if keys[pygame.K_DOWN] or keys[pygame.K_s]:
         playerY += player_speed
+
 ############################################################
-
-    # Alien movement code, hits edge, moves down by 10 pixels and moves in the opposite direction.
-
-    for alien in aliens:
-        alien.x += alien_speed * alien_direction * dt * 60  # move horizontally
+    # Alien movement code, hits edge, moves down by 10 pixels, moves opposite direction.
 
     hit_edge = False
     for alien in aliens:
-        if alien.right >= screenX:
+        rect = alien["rect"]
+        rect.x += alien_speed * alien_direction * dt * 60
+
+        if rect.left < EDGE_BUFFER:
+            rect.left = EDGE_BUFFER
             hit_edge = True
-            alien_direction = -1
-            break
-        elif alien.left <= 0:
+        elif rect.right > screenX - EDGE_BUFFER:
+            rect.right = screenX - EDGE_BUFFER
             hit_edge = True
-            alien_direction = 1
-            break
+
+    # Check for edge collisions
+    if rect.right >= screenX - EDGE_BUFFER or rect.left <= EDGE_BUFFER:
+        hit_edge = True
+
+    # Flip direction once if any alien hit an edge
     if hit_edge:
+        alien_direction *= -1
         for alien in aliens:
-            alien.y += 20  # drop
+            alien["rect"].y += DROP_AMOUNT
 
-
+    # Remove spawn protection after first frame
     for alien in aliens:
-        screen.blit(alienimg, alien)
+        if alien["just_spawned"] and alien["rect"].top > 50:
+            alien["just_spawned"] = False
 
-############################################################
-# Alien spawning mechanic after pressing "c" to continue.
-
-    def spawn_aliens(level): 
-        global aliens, alien_speed
-        aliens = []
-        rows = min(3, 2 + level)   # increase rows up to 3
-        cols = min(5, 3 + level)  # increase columns up to 5
-        for row in range(rows):
-            for col in range(cols):
-                alien_rect = alienimg.get_rect(topleft=(col*70, 50 + row*50))
-                aliens.append(alien_rect)
-        alien_speed = 5 * (1 + level * 0.1)  # increase speed, 10% faster per level.
+    # Draw aliens
+    for alien in aliens:
+        screen.blit(alienimg, alien["rect"])
 
 ############################################################
     # Pause Screen function
@@ -199,39 +267,47 @@ while running:
                         paused = False
 
 ############################################################
-
-    # player boundary
+    # Player boundary
     playerX = max(0, min(playerX, screenX - iconX))
     playerY = max(350, min(playerY, screenY - iconY))
 
 ############################################################
     # Shooting Mechanics/ Fire bullet
     
-    if keys[pygame.K_SPACE] and not bullet_active:
-        bullet_rect = pygame.Rect(playerX + iconX//2 - 2, playerY, 4, 10)
-        bullet_active = True
+    current_time = pygame.time.get_ticks()
+
+    if keys[pygame.K_SPACE] and current_time - last_shot_time > bullet_cooldown:
+        last_shot_time = current_time
+
+        if multi_shot_enabled:
+        # Fire 3 bullets: center, left, right
+            bullet1 = pygame.Rect(player_rect.centerx - 2, player_rect.top - 10, 4, 10)
+            bullet2 = pygame.Rect(player_rect.centerx - 17, player_rect.top - 10, 4, 10)
+            bullet3 = pygame.Rect(player_rect.centerx + 13, player_rect.top - 10, 4, 10)
+            bullets.extend([bullet1, bullet2, bullet3])
+        else:
+        # Single bullet
+            bullet = pygame.Rect(player_rect.centerx - 2, player_rect.top - 10, 4, 10)
+            bullets.append(bullet)
 
     # Move bullet if active
-    if bullet_active and bullet_rect is not None:
-        bullet_rect.y -= bullet_speed * dt
-        pygame.draw.rect(screen, (255, 255, 0), bullet_rect)
-        # Remove bullet if it goes off-screen
-        if bullet_rect.bottom < 0: # Check the bullet where the player is has reached the end.
-            bullet_active = False # disables the bullet to make it available to shoot again.
-            bullet_rect = None
-    # Bullet collision with aliens
-    if bullet_active and bullet_rect is not None:
-        for alien in aliens[:]:
-            if bullet_rect.colliderect(alien):
-                bullet_active = False
-                bullet_rect = None
-                aliens.remove(alien)  # remove alien when hit
-                break
+    for bullet in bullets[:]:
+        bullet.y -= bullet_speed * dt
+        pygame.draw.rect(screen, (255, 255, 0), bullet)
+
+        if bullet.bottom < 0:
+            bullets.remove(bullet)
+        else:
+            for alien in aliens[:]:
+                if bullet.colliderect(alien["rect"]):
+                    aliens.remove(alien)
+                    bullets.remove(bullet)
+                    break
 
 ############################################################
     # Player collision with aliens
     for alien in aliens[:]:
-        if player_rect.colliderect(alien):
+        if player_rect.colliderect(alien["rect"]):
             player_lives -= 1
             aliens.remove(alien)  # remove alien that hit player
             if player_lives <= 0:
@@ -239,7 +315,7 @@ while running:
 
 ############################################################                
     # Render lives
-    lives_text = font.render(f"Lives: {player_lives}", True, (255, 255, 255))
+    lives_text = font.render(f"Lives: ", True, (255, 255, 255))
     screen.blit(lives_text, (10, 10))
  
 ############################################################
