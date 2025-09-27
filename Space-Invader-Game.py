@@ -7,15 +7,15 @@ pygame.init()
 
 ############################################################
 # Creates the display/screen, size position is width (X, Left to Right) then height (Y, Top to Bottom)
-screenX = 800
-screenY = 600
+screenX = 1820
+screenY = 980
 screen = pygame.display.set_mode((screenX, screenY))
 clock = pygame.time.Clock()
 
 ############################################################
 # Title and Icon
-pygame.display.set_caption("Slime Invaders")
-icon = pygame.image.load('Game Assets/Ship.png')
+pygame.display.set_caption("Alien Invaders from the Universe")
+icon = pygame.image.load('Game Assets\Ship.png')
 pygame.display.set_icon(icon)
 
 ############################################################
@@ -36,7 +36,7 @@ iconY = 64
 # Powerup Configs
 
 powerup_rect = powerup_threeshot[0].get_rect(
-    topleft=(random.randint(50,750), random.randint(350, screenY -50))) # forced second randint to spawn orb in the bottom half of map
+    topleft=(random.randint(50, screenX - 50), random.randint(350, screenY -50))) # forced second randint to spawn orb in the bottom half of map
 
 # --- Variables for effects ---
 rotation_angle = 0
@@ -49,10 +49,10 @@ float_amplitude = 5
 # Player Configs
 
 # Positioning of the player
-playerX = 370
-playerY = 480
+playerX = screenX / 2
+playerY = screenY 
 # player's speed movement.
-player_speed = 2.5
+player_speed = 7
 # player lives
 player_lives = 3
 font = pygame.font.Font(None, 36)
@@ -60,8 +60,7 @@ font = pygame.font.Font(None, 36)
 ############################################################
 # Alien Configs
 
-# Alien's speed
-alien_speed = 10
+alien_speed = 15
 # Creation of multiple enemies
 aliens = []
 for i in range(5): 
@@ -77,10 +76,10 @@ for i in range(5):
 
 bullet_rect = None
 bullet_active = False
-bullet_speed = 400
+bullet_speed = 600
 
 bullets = []
-bullet_cooldown = 400
+bullet_cooldown = 200
 last_shot_time = 0
 multi_shot_enabled = True
 
@@ -90,7 +89,7 @@ game_state = "playing"
 level = 1
 alien_direction = 1
 EDGE_BUFFER = 5 # Amount of Pixels
-DROP_AMOUNT = 20
+DROP_AMOUNT = 30
 
 ############################################################
 # Heart Health *animation* asset.
@@ -105,15 +104,15 @@ heart_animation_speed = 250
 ############################################################
 
 # Functions
-def player(x, y):
+def player(x, y): # Function that tells the code where character should spawn/ be drawn
     screen.blit(playerimg, (x, y))
 
 def spawn_aliens(level): 
     global aliens, alien_speed, bullets
     bullets = []
     aliens = []
-    rows = min(3, 2 + level)   # increase rows up to 3 #Change this number to update the minimum rows.
-    cols = min(8, 3 + level)  # increase columns up to 5 #Change this number to update the minimum columns.
+    rows = min(5, 2 + level)   # increase rows up to 3 #Change this number to update the minimum rows.
+    cols = min(10, 3 + level)  # increase columns up to 5 #Change this number to update the minimum columns.
 
     vertical_padding = 50
     alien_width = alienimg.get_width()
@@ -130,7 +129,7 @@ def spawn_aliens(level):
             alien_rect = alienimg.get_rect(topleft=(x, y))
             aliens.append({"rect": alien_rect, "just_spawned": True})
 
-    alien_speed = 5 * (1 + level * 0.1)  # increase speed, 10% faster per level.
+    alien_speed = alien_speed * (1 + level * 0.1)  # increase speed, 10% faster per level.
 
 ############################################################
 #######----------------Main Loop Code----------------#######
@@ -151,7 +150,35 @@ while running:
             running = False
 
 ############################################################
-    # Levels/Waves code
+    # Pause Screen configs
+
+    def show_pause_screen(message="Wave Cleared! Press C to Continue or Q to Quit"):
+        global playerX, playerY, running
+        paused = True
+        font = pygame.font.Font(None, 50)  # Bigger font for visibility
+
+        while paused:
+            screen.fill((0, 0, 0))  # Black background
+            text = font.render(message, True, (255, 255, 255))  # White text
+            text_rect = text.get_rect(center=(screenX//2, screenY//2))
+            screen.blit(text, text_rect)
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_c:  # Continue
+                        playerX = screenX // 2 - iconX // 2
+                        playerY = screenY
+                        paused = False
+                    elif event.key == pygame.K_q:
+                        running = False
+                        paused = False
+
+############################################################
+    # Levels/Waves config
 
     if game_state == "playing":
         if len(aliens) == 0:
@@ -171,7 +198,7 @@ while running:
             game_state = "playing"
 
 ############################################################
-    # Code for threeshot powerup
+    # Code for threeshot powerup // Might become redunant once the upgrade shop becomes available.
 
     current_img = powerup_threeshot[flash_frame]
     # Update flash
@@ -195,7 +222,7 @@ while running:
         heart_animation_timer = 0
         heart_frame = (heart_frame + 1) % len(heart_images)
     for i in range(player_lives):
-        screen.blit(heart_images[heart_frame], (10 + i * 40, 10))
+        screen.blit(heart_images[heart_frame], (10 + i * 40, 40))
 
 ############################################################ 
     # Movement for player based on Keys pressed W,A,S,D/Up,Left,Down,Right or arrow keys, might change to mouse position in future.
@@ -245,31 +272,9 @@ while running:
         screen.blit(alienimg, alien["rect"])
 
 ############################################################
-    # Pause Screen function
-
-    def show_pause_screen(message="Wave Cleared! Press C to Continue"):
-        paused = True
-        font = pygame.font.Font(None, 50)  # Bigger font for visibility
-
-        while paused:
-            screen.fill((0, 0, 0))  # Black background
-            text = font.render(message, True, (255, 255, 255))  # White text
-            text_rect = text.get_rect(center=(screenX//2, screenY//2))
-            screen.blit(text, text_rect)
-            pygame.display.flip()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    exit()
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_c:  # Continue
-                        paused = False
-
-############################################################
     # Player boundary
     playerX = max(0, min(playerX, screenX - iconX))
-    playerY = max(350, min(playerY, screenY - iconY))
+    playerY = max(450, min(playerY, screenY - iconY))
 
 ############################################################
     # Shooting Mechanics/ Fire bullet
@@ -315,8 +320,10 @@ while running:
 
 ############################################################                
     # Render lives
-    lives_text = font.render(f"Lives: ", True, (255, 255, 255))
-    screen.blit(lives_text, (10, 10))
+    lives_text = font.render(f"LIVES:", True, (255, 255, 255))
+    levels_text = font.render(f"LEVEL: {level} ", True, (255, 255, 255))
+    screen.blit(lives_text, (40, 17))
+    screen.blit(levels_text, (screenX - levels_text.get_width() - 10, 17))
  
 ############################################################
 
