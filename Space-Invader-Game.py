@@ -14,13 +14,8 @@ pygame.display.set_caption("Slime Invaders")
 icon = pygame.image.load('Game Assets\Slime.png')
 pygame.display.set_icon(icon)
 
-# Player images
+# Image assets
 playerimg = pygame.image.load('Game Assets\Slime.png')
-alienimg = pygame.image.load('Game Assets\Alien.png')
-
-# Allows for movement code to know how big your image/icon really is.
-iconX = 64
-iconY = 64
 
 # Scaling image size as it's over 64x64
 img_width = 64
@@ -28,41 +23,60 @@ img_height = 64
 img_size = (img_width, img_height)
 img_scaled = pygame.transform.scale(playerimg, img_size)
 
-# Positioning of the player icon at first boot up
+alienimg = pygame.image.load('Game Assets\Alien.png')
+
+# Setting a set pixel size for assets
+iconX = 64
+iconY = 64
+
+############################################################
+
+# Player Configs
+
+# Positioning of the player
 playerX = 370
 playerY = 480
-
-# Positioning of the Alien icon at boot up.
-aliens_rect = alienimg.get_rect(topleft= (100, 50))
- 
-
-
 # player's speed movement.
 player_speed = 2.5
+# player lives
+player_lives = 3
+font = pygame.font.Font(None, 36)
+############################################################
+# Alien Configs
+
+# Alien's speed
 alien_speed = 10
+# Creation of multiple enemies
+aliens = []
+for i in range(5): # 5 will spawn in random areas. 
+    alien_rect = alienimg.get_rect(topleft=(i * 100, 50))  # space them out
+    aliens.append(alien_rect)
+
+############################################################
+
+# Shooting configs
+bullet_rect = None
+bullet_active = False
+bullet_speed = 400
 
 # Function is created using .blit() to draw player images on top of window.
 def player(x, y):
     screen.blit(img_scaled, (x, y))
 
-# Bullet mechanics
-bullet_rect = None
-bullet_active = False
-bullet_speed = 400
-
 # Game Loop to make sure the window is running/working with all game assets
 running = True
 while running:
+
     # Creating Collision detection between Alien & Player
     player_rect = pygame.Rect(playerX, playerY, iconX, iconY)
     dt = clock.tick(60) / 1000 # Using clock to make sure the game is running properly on a certain amount of FPS
     # RGB - Red, Green, Blue
-    screen.fill((0, 150, 255)) #Creates the background colour
+    screen.fill('black') #Creates the background colour
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
     
-    # Movement for player based on Keys pressed W,A,S,D/Up,Left,Down,Right
+    # Movement for player based on Keys pressed W,A,S,D/Up,Left,Down,Right or arrow keys.
     keys = pygame.key.get_pressed()
 
     if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -73,6 +87,24 @@ while running:
         playerY -= player_speed
     if keys[pygame.K_DOWN] or keys[pygame.K_s]:
         playerY += player_speed
+
+    for alien in aliens:
+        alien.x += alien_speed * dt * 60  # move horizontally
+
+    hit_edge = False
+
+    for alien in aliens:
+        if alien.right >= screenX or alien.left <= 0:
+            hit_edge = True
+            break
+        
+    if hit_edge:
+        alien_speed = -alien_speed  # bounce direction
+        for alien in aliens:  # drop all aliens down when bouncing
+                alien.y += 40
+
+    for alien in aliens:
+        screen.blit(alienimg, alien)
     
     # player boundary
     playerX = max(0, min(playerX, screenX - iconX))
@@ -87,30 +119,32 @@ while running:
     if bullet_active and bullet_rect is not None:
         bullet_rect.y -= bullet_speed * dt
         pygame.draw.rect(screen, (255, 255, 0), bullet_rect)
-
         # Remove bullet if it goes off-screen
-        if bullet_rect.bottom < 0:
-            bullet_active = False
+        if bullet_rect.bottom < 0: # Check the bullet where the player is has reached the end.
+            bullet_active = False # disables the bullet to make it available to shoot again.
             bullet_rect = None
-
-    # Collision detection
+    # Bullet collision with aliens
     if bullet_active and bullet_rect is not None:
-        if bullet_rect.colliderect(aliens_rect):
-            bullet_active = False
-            bullet_rect = None
-            aliens_rect.topleft = (-100, -100)
+        for alien in aliens[:]:
+            if bullet_rect.colliderect(alien):
+                bullet_active = False
+                bullet_rect = None
+                aliens.remove(alien)  # remove alien when hit
+                break
 
-    
-    # Automated script for Alien movement
-    aliens_rect.x += alien_speed * dt * 100
-    if aliens_rect.right >= screenX or aliens_rect.left <= 0:
-        alien_speed = -alien_speed
-        aliens_rect.y += 10
-    # Player & Alien collision detection
-    if player_rect.colliderect(aliens_rect):
-        print("Game Over!")
-        running = False  # stops the game loop
+    # Player collision with aliens
+    for alien in aliens[:]:
+        if player_rect.colliderect(alien):
+            player_lives -= 1
+            aliens.remove(alien)  # remove alien that hit player
+            playerX, playerY = 370, 480
+            if player_lives <= 0:
+                print("Game Over!")
+                running = False
 
-    screen.blit(alienimg, aliens_rect) 
+    # Render lives
+    lives_text = font.render(f"Lives: {player_lives}", True, (255, 255, 255))
+    screen.blit(lives_text, (10, 10))
+ 
     player(playerX, playerY)
     pygame.display.flip()
