@@ -1,0 +1,253 @@
+
+import pygame
+import random
+import math
+import sys
+
+pygame.init()
+pygame.mixer.init()
+
+class Assets:
+    """The 'Assets' class store and 
+    loads the collective ball assets for 
+    images, effects and music"""
+
+    game_icon = pygame.image.load('Game Assets/ship.png')
+    player_image = pygame.image.load('Game Assets/ship.png')
+    enemy_image = pygame.image.load('Game Assets/alien_basic.png')
+    background_image = pygame.image.load('Game Assets/shop_background.png')
+    hearts_image = [pygame.image.load('Game Assets/heart1.png'), pygame.image.load('Game Assets/heart2.png')]
+
+    starter_sound = pygame.mixer.Sound('AudioAssets/starter_weapon.mp3')
+    triple_sound = pygame.mixer.Sound('AudioAssets/triple_power_up.wav')
+    cannon_sound = pygame.mixer.Sound('AudioAssets/cannon_shot.wav')
+    gatling_sound = pygame.mixer.Sound('AudioAssets/gatling_laser.wav')
+
+class Upgrades:
+    """The 'Power_ups' class contains
+    basic and set information for power ups, 
+    like animation, duration & timers"""
+
+    booster = False
+    booster_speed = 10
+    triple_shot = False
+    upgrades = {
+    "1": {  # Key to trigger the upgrade
+        "name": "Permanent Speed Boost",
+        "cost": 100,
+        "effect": lambda: setattr(Upgrades, "booster", True)
+    },
+    "2": {
+        "name": "Triple Shot",
+        "cost": 500,
+        "effect": lambda: setattr(Upgrades, "triple_shot", True)
+        }
+}
+
+class Player:
+    def __init__(self):
+        self.player_lives = 3
+        self.credits = 0
+        self.inventory = []
+        self.speed = 3
+        self.playerX = Game_info.screenX / 2
+        self.playerY = Game_info.screenY 
+        self.player_box = pygame.Rect(self.playerX, self.playerY, Game_info.screenX - Game_info.iconX) #Player collision box
+
+    
+    def earn_credits(self):
+        self.credits += len(Alien_info.aliens) * 100
+    
+    def show_message(self, text, duration=1000):
+        font = pygame.font.Font(None, 50)
+        msg_surface = font.render(text, True, (255, 255, 255))
+        msg_rect = msg_surface.get_rect(center=(Game_info.screenX//2, Game_info.screenY//2))
+        screen.blit(msg_surface, msg_rect)
+        pygame.display.flip()
+        pygame.time.delay(duration)
+
+    def player_shop(self):
+        paused = True
+        font = pygame.font.Font(None, 50)
+
+        while paused:
+            screen.blit(Assets.background_image, (0, 0))
+
+            y_offset = 200
+            for key, upgrade in Upgrades.upgrades.items():
+                text = font.render(f"Press '{key}' to buy {upgrade['name']}: {upgrade['cost']} Credits", True, (255, 255, 255))
+                screen.blit(text, (Game_info.screenX // 2 - text.get_width() // 2, y_offset))
+                y_offset += 70
+
+            money_text = font.render(f"CREDITS: {player.credits}", True, (255, 255, 255))
+            screen.blit(money_text, (15, 127))
+
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                elif event.type == pygame.KEYDOWN:
+                    key_pressed = pygame.key.name(event.key).upper()
+
+                    if key_pressed in Upgrades.upgrades:
+                        upgrade = Upgrades.upgrades[key_pressed]
+                        if player_money >= upgrade["cost"]:
+                            player_money -= upgrade["cost"]
+                            upgrade["effect"]()
+                            Player.show_message(f"Purchased {upgrade['name']}!") 
+                            pygame.time.delay(1000) 
+                            paused = False
+                        else:
+                            Player.show_message("Not enough credits")
+
+                    elif event.key == pygame.K_ESCAPE:
+                        paused = False
+
+class Game_info:
+    """The 'Game_info' class will store
+    information regarding the games
+    most basic information, 
+    dimensions, variables and reusable
+    fonts or functions"""
+    clock = pygame.time.Clock()
+    screenX = 1080
+    screenY = 720
+    iconX = 64
+    iconY = 64
+    font = pygame.font.Font(None, 36)
+    game_state = "Playing"
+    level = 1
+    edge_buffer = 5
+    duration = 1000
+
+    @staticmethod
+    def quit_game():
+        pygame.quit()
+        sys.exit()
+
+    @staticmethod
+    def show_pause_screen(player, message):
+        paused = True
+        font = pygame.font.Font(None, 50)  
+
+        while paused:
+            screen.fill((0, 0, 0))  
+            text = font.render(message, True, (255, 255, 255)) 
+            text_rect = text.get_rect(center=(Game_info.screenX//2, Game_info.screenY//2))
+            screen.blit(text, text_rect)
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_c: 
+                        Game_info.level += 1
+                        Alien_info.spawn_aliens(Game_info.level)
+                        Game_info.playerX = Game_info.screenX // 2 - Game_info.iconX // 2
+                        Game_info.playerY = Game_info.screenY
+                        Game_info.game_state = "playing"
+                        paused = False
+                    elif event.key == pygame.K_s:
+                        Player.player_shop()
+                    elif event.key == pygame.K_q:
+                        paused = False
+
+    def keyboard():
+        keys = pygame.key.get_pressed()
+        if Upgrades.booster:
+            player.speed = Upgrades.booster_speed
+
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            playerX -= Player.speed
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            playerX += Player.speed
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
+            playerY -= Player.speed
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            playerY += Player.speed
+
+        if keys[pygame.K_ESCAPE]:
+            Game_info.show_pause_screen(player)
+
+    def show_message(text, duration):
+        font = pygame.font.Font(None, 50)
+        msg_surface = font.render(text, True, (255, 255, 255))
+        msg_rect = msg_surface.get_rect(center=(Game_info.screenX//2, Game_info.screenY//2))
+        screen.blit(msg_surface, msg_rect)
+        pygame.display.flip()
+        pygame.time.delay(Game_info.duration)
+
+class Alien_info:
+    """The 'Alien_info' class holds
+    configurable information to use throughout
+    as a [globals] dictionary basically"""     
+
+    aliens = []
+    alien_direction = 1
+    alien_speed = 10
+    alien_drop_amount = 60 #In pixels
+    vertical_padding = 50
+    rows = min(5, 0 + Game_info.level)
+    cols = min(10, 10, + Game_info.level)
+
+    @classmethod
+    def spawn_aliens(cls, level):
+        Bullets_info.bullets = []
+        cls.aliens = []
+
+        alien_width = Assets.enemy_image.get_width()
+        alien_height = Assets.enemy_image.get_height()
+
+        total_width = cls.cols * alien_width + (cls.cols - 1) * 20
+        start_x = (Game_info.screenX - total_width) // 2
+        start_y = cls.vertical_padding
+
+        for row in range(cls.rows):
+            for col in range(cls.cols):
+                x = start_x + col * (alien_width + 20)
+                y = start_y + row * (alien_height + 20)
+                alien_rect = Assets.enemy_image.get_rect(topleft=(x, y))
+                cls.aliens.append({
+                    "rect": alien_rect, 
+                    "just_spawned": True,
+                    "independent": False,
+                    "x_speed": 0,
+                    "y_speed": 0,
+                    })    
+        cls.alien_speed = 5 + (level * 0.3)
+        cls.alien_wave_count = len(cls.aliens)  # Holds quantity of aliens in variable to cash out 
+
+pygame.display.set_caption("Alien Invaders")
+pygame.display.set_icon(Assets.game_icon)
+screen = pygame.display.set_mode((Game_info.screenX, Game_info.screenY))
+
+class Bullets_info:
+    """The 'Bullets_info' class holds
+    set information about weapon ammo,
+    state of a weapon and bullet speed"""
+
+    triple_shot_enabled = False
+    bullets = []
+
+Alien_info.spawn_aliens(Game_info.level)
+player = Player()
+
+while True:
+    dt = Game_info.clock.tick(60) / 1000
+    screen.fill('black')
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            Game_info.quit_game()
+
+    if Game_info.game_state == "Playing" and len(Alien_info.aliens) == 0:
+        player.earn_credits()
+        Game_info.game_state = "Wave_cleared"
+        Game_info.show_pause_screen(player)
+    
+
+
+    pygame.display.flip()
