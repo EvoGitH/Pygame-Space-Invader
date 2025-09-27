@@ -93,8 +93,8 @@ DROP_AMOUNT = 30
 
 ############################################################
 # Heart Health *animation* asset.
-heart1 = pygame.image.load("Game Assets/heart1.png").convert_alpha()
-heart2 = pygame.image.load("Game Assets/heart2.png").convert_alpha()
+heart1 = pygame.image.load("Game Assets/Heart1.png").convert_alpha()
+heart2 = pygame.image.load("Game Assets/Heart2.png").convert_alpha()
 
 heart_images = [heart1, heart2]
 heart_frame = 0
@@ -329,3 +329,4 @@ while running:
 
     player(playerX, playerY)
     pygame.display.flip()
+
