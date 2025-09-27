@@ -3,24 +3,22 @@ import pygame
 # Initialize the pygame module
 pygame.init()
 
-# Creates the display/screen, size position is width (X) then height (Y)
+############################################################
+# Creates the display/screen, size position is width (X, Left to Right) then height (Y, Top to Bottom)
 screenX = 800
 screenY = 600
 screen = pygame.display.set_mode((screenX, screenY))
 clock = pygame.time.Clock()
 
+############################################################
 # Title and Icon
 pygame.display.set_caption("Slime Invaders")
-icon = pygame.image.load('Game Assets\Slime.png')
+icon = pygame.image.load('Game Assets\Ship.png')
 pygame.display.set_icon(icon)
 
+############################################################
 # Image assets
-playerimg = pygame.image.load('Game Assets\Slime.png')
-# Scaling image size as it's over 64x64
-img_width = 64
-img_height = 64
-img_size = (img_width, img_height)
-img_scaled = pygame.transform.scale(playerimg, img_size)
+playerimg = pygame.image.load('Game Assets\Ship.png')
 alienimg = pygame.image.load('Game Assets\Alien.png')
 
 # Setting a set pixel size for assets
@@ -65,10 +63,20 @@ level = 1
 alien_direction = 1
 
 ############################################################
+# Heart Health *animation* asset.
+heart1 = pygame.image.load("Game Assets/heart1.png").convert_alpha()
+heart2 = pygame.image.load("Game Assets/heart2.png").convert_alpha()
+
+heart_images = [heart1, heart2]
+heart_frame = 0
+heart_animation_timer = 0
+heart_animation_speed = 250
+
+############################################################
 
 # Function is created using .blit() to draw player images on top of window.
 def player(x, y):
-    screen.blit(img_scaled, (x, y))
+    screen.blit(playerimg, (x, y))
 
 ############################################################
 #######----------------Main Loop Code----------------#######
@@ -104,16 +112,21 @@ while running:
     player_rect = pygame.Rect(playerX, playerY, iconX, iconY) # Creating Collision detection between Alien & Player
     dt = clock.tick(60) / 1000 # Using clock to make sure the game is running properly on a certain amount of FPS
     screen.fill('black') #Creates the background colour
-
-############################################################
-
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-############################################################    
+############################################################
+    # Heart Animation:
+    heart_animation_timer += dt * 1000
+    if heart_animation_timer >= heart_animation_speed:
+        heart_animation_timer = 0
+        heart_frame = (heart_frame + 1) % len(heart_images)
+    for i in range(player_lives):
+        screen.blit(heart_images[heart_frame], (10 + i * 40, 10))
 
-    # Movement for player based on Keys pressed W,A,S,D/Up,Left,Down,Right or arrow keys.
+############################################################ 
+    # Movement for player based on Keys pressed W,A,S,D/Up,Left,Down,Right or arrow keys, might change to mouse position in future.
     keys = pygame.key.get_pressed()
 
     if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -192,8 +205,8 @@ while running:
     playerY = max(350, min(playerY, screenY - iconY))
 
 ############################################################
-
     # Shooting Mechanics/ Fire bullet
+    
     if keys[pygame.K_SPACE] and not bullet_active:
         bullet_rect = pygame.Rect(playerX + iconX//2 - 2, playerY, 4, 10)
         bullet_active = True
@@ -216,7 +229,6 @@ while running:
                 break
 
 ############################################################
-
     # Player collision with aliens
     for alien in aliens[:]:
         if player_rect.colliderect(alien):
@@ -226,7 +238,6 @@ while running:
                 running = False
 
 ############################################################                
-
     # Render lives
     lives_text = font.render(f"Lives: {player_lives}", True, (255, 255, 255))
     screen.blit(lives_text, (10, 10))
