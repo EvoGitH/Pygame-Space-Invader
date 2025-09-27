@@ -74,9 +74,11 @@ while running:
     if keys[pygame.K_DOWN] or keys[pygame.K_s]:
         playerY += player_speed
     
-    # Shooting Mechanics
+    # player boundary
+    playerX = max(0, min(playerX, screenX - iconX))
+    playerY = max(350, min(playerY, screenY - iconY))
 
-    # Fire bullet
+    # Shooting Mechanics/ Fire bullet
     if keys[pygame.K_SPACE] and not bullet_active:
         bullet_rect = pygame.Rect(playerX + iconX//2 - 2, playerY, 4, 10)
         bullet_active = True
@@ -104,14 +106,11 @@ while running:
     if aliens_rect.right >= screenX or aliens_rect.left <= 0:
         alien_speed = -alien_speed
         aliens_rect.y += 10
-
     # Player & Alien collision detection
     if player_rect.colliderect(aliens_rect):
         print("Game Over!")
         running = False  # stops the game loop
 
-    #playerX = max(0, min(playerX, screenX - iconX))
-    #playerY = max(350, min(playerY, screenY - iconY))
     screen.blit(alienimg, aliens_rect) 
     player(playerX, playerY)
     pygame.display.flip()
