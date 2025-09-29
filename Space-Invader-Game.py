@@ -14,7 +14,7 @@ class Exiting:
 
 class Assets:
     """The 'Assets' class store and 
-    loads the collective ball assets for 
+    loads the collective assets of all 
     images, effects and music"""
 
     game_icon = pygame.image.load('Game Assets/ship.png')
@@ -44,6 +44,7 @@ class Assets:
     cannon_sound = pygame.mixer.Sound('AudioAssets/cannon_shot.wav')
     gatling_sound = pygame.mixer.Sound('AudioAssets/gatling_laser.wav')
     shield_sound = pygame.mixer.Sound('AudioAssets/shield_energy.wav')
+    shield_failed_sound = pygame.mixer.Sound('AudioAssets/shield_failed.wav')
 
 class Game_info:
     """The 'Game_info' class will store
@@ -53,7 +54,7 @@ class Game_info:
     fonts or functions"""
 
     hit_edge = False
-    game_paused = False
+
     clock = pygame.time.Clock()
     clock_ticks = pygame.time.get_ticks()
     dt = clock.tick(60) / 1000
@@ -61,12 +62,15 @@ class Game_info:
     screenY = 1080
     iconX = 64
     iconY = 64
+    edge_buffer = 5
     font = pygame.font.Font(None, 36)
 
     game_state = "Playing"
     level = 1
+    game_paused = False
+    wave_cleared = False
 
-    edge_buffer = 5
+
 
     last_shot_time = 0
     bullet_speed = 500
@@ -96,11 +100,13 @@ class Upgrades:
     "1": {  # Key to trigger the upgrade
         "name": "Permanent Speed Boost",
         "cost": 100,
+        "flag": "booster",
         "effect": lambda: setattr(Upgrades, "booster", True)
     },
     "2": {
         "name": "Triple Shot",
         "cost": 500,
+        "flag": "triple_shot",
         "effect": lambda: setattr(Upgrades, "triple_shot", True)
         }
 }
@@ -124,14 +130,18 @@ class Player:
                      random.randint(Game_info.screenY // 2, Game_info.screenY - 50))
                      )
 
+        self.shields = 0
+        self.max_shields =3
+        self.shield_duration = 0
         self.shield_coin_active = False
+
         self.coin_collected = False
         self.coin_frame = 0
         self.coin_timer = 0
         self.coin_effect_timer = 0
         self.coin_speed = 250   
         self.coin_duration = 5000
-        self.coin_respawn_delay = 8000
+        self.coin_respawn_delay = 5000
         self.coin_respawn_timer = 0
         self.float_amplitude = 5
     
@@ -157,7 +167,7 @@ class Player:
     def player_shop(self):
         font = pygame.font.Font(None, 50)
 
-        while Game_info.game_paused:
+        while Game_info.game_paused or Game_info.wave_cleared:
             screen.blit(Assets.background_image, (0, 0))
             y_offset = 200
 
@@ -180,7 +190,9 @@ class Player:
 
                     if key_pressed in Upgrades.upgrades:
                         upgrade = Upgrades.upgrades[key_pressed]
-                        if player.credits >= upgrade["cost"]:
+                        if upgrade.get("flag") and getattr(Upgrades, upgrade["flag"], False):
+                            player.show_message("Already purchased")
+                        elif player.credits >= upgrade["cost"]:
                             player.credits -= upgrade["cost"]
                             upgrade["effect"]()
                             player.show_message(f"Purchased {upgrade['name']}!") 
@@ -190,17 +202,20 @@ class Player:
 
                     elif event.key == pygame.K_ESCAPE:
                         Game_info.game_paused = False
-
+                        return
     def shooting_mechanic(self):
             if Upgrades.triple_shot:
             # Fire 3 bullets: center, left, right
+                Assets.triple_sound.set_volume(0.5)
                 Assets.triple_sound.play() # Audio file
+
                 bullet1 = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
                 bullet2 = pygame.Rect(player.player_box.centerx - 17, player.player_box.top - 10, 4, 10)
                 bullet3 = pygame.Rect(player.player_box.centerx + 13, player.player_box.top - 10, 4, 10)
                 player.bullets.extend([bullet1, bullet2, bullet3])
             else:
             # Single bullet, basic beginner.
+                Assets.starter_sound.set_volume(0.5)
                 Assets.starter_sound.play()
                 bullet = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
                 player.bullets.append(bullet)
@@ -224,16 +239,20 @@ class Player:
     def coin_collision(self, dt):
 
         if self.player_box.colliderect(self.shield_coin_rect) and not self.shield_coin_active:
-            self.shield_coin_active = True
+            self.shields += 1
             self.coin_collected = True
+            self.shield_coin_active = True
             self.coin_effect_timer = 0
+            Assets.shield_sound.set_volume(0.3)
             Assets.shield_sound.play()
+
 
         if self.shield_coin_active:
             self.coin_effect_timer += dt * 1000
-            effect_duration = 10000
+            effect_duration = 15000
             if self.coin_effect_timer >= effect_duration:
                 self.shield_coin_active = False
+                self.shields -= 1
 
         if self.coin_collected and not self.shield_coin_active:
             self.coin_respawn_timer += dt * 1000
@@ -258,7 +277,18 @@ class Player:
             draw_rect = current_img.get_rect(center=self.shield_coin_rect.center) 
             draw_rect.y += float_offset
     
-            screen.blit(current_img, draw_rect) 
+            screen.blit(current_img, draw_rect)
+
+    def draw_shields(self, screen):
+        """Draws 1-3 visual blue rings 
+        around player depending 
+        on shield count"""
+
+        for i in range(self.shields):
+            radius = max(Game_info.iconX, Game_info.iconY) + (i * 10)  # each ring slightly bigger
+            shield_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(shield_surface, (0, 0, 255, 100), (radius, radius), radius, 4)  # 4px thick ring
+            screen.blit(shield_surface, (self.playerX - radius + Game_info.iconX/2, self.playerY - radius + Game_info.iconY/2))
 
 class Alien_info:
     """The 'Alien_info' class holds
@@ -269,23 +299,25 @@ class Alien_info:
     alien_speed = 5
     alien_drop_amount = 60 #In pixels
     vertical_padding = 50
-    rows = min(5, 0 + Game_info.level)
-    cols = min(10, 10 + Game_info.level)
+
 
 class Spawning:
     def spawn_aliens(self, level):
         player.bullets = []
         Alien_info.aliens = []
+        Game_info.game_state = "Playing"
+        rows = min(5, 0 + Game_info.level)
+        cols = min(10, 10 + Game_info.level)
 
         alien_width = Assets.enemy_image.get_width()
         alien_height = Assets.enemy_image.get_height()
 
-        total_width = Alien_info.cols * alien_width + (Alien_info.cols - 1) * 20
+        total_width = cols * alien_width + (cols - 1) * 20
         start_x = (Game_info.screenX - total_width) // 2
         start_y = Alien_info.vertical_padding
 
-        for row in range(Alien_info.rows):
-            for col in range(Alien_info.cols):
+        for row in range(rows):
+            for col in range(cols):
                 x = start_x + col * (alien_width + 20)
                 y = start_y + row * (alien_height + 20)
                 alien_rect = Assets.enemy_image.get_rect(topleft=(x, y))
@@ -353,14 +385,26 @@ class Movement:
     def collision_check(self):
         for alien in Alien_info.aliens[:]:
             if player.player_box.colliderect(alien["rect"]):
-                player.player_lives -= 1
-                Alien_info.aliens.remove(alien)
-                player.show_message("Ouch! Lost a Life", duration=500)
-                break
+                if player.shields > 0:
+                    player.shields -= 1
+                    player.show_message("Shield absorbed the hit!", duration=150)
+                    if player.shields == 0:
+                        Assets.shield_failed_sound.set_volume(0.1)
+                        Assets.shield_failed_sound.play()
+
+                else:
+                    player.player_lives -= 1
+                    player.show_message("Ouch! Lost a Life", duration=150)
+                if alien in Alien_info.aliens:
+                    Alien_info.aliens.remove(alien)
+                    
+                if player.player_lives == 0:
+                    Exiting.quit_game()
 
 class Pause_manager:
-    def show_pause_screen(message):
-        Game_info.game_paused = True
+    def show_pause_screen(message, set_paused=True):
+        if set_paused:
+            Game_info.game_paused = True
         font = pygame.font.Font(None, 50)  
         screen.fill((0, 0, 0))  
         text = font.render(message, True, (255, 255, 255)) 
@@ -372,28 +416,29 @@ class Input_manager:
     """The 'Input_manager' class will
     house all related keyboard inputs
     and related functions to said inputs"""
-    
-    def process_events():
+    def process():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 Exiting.quit_game()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     Game_info.game_paused = not Game_info.game_paused
-                elif event.key == pygame.K_s and Game_info.game_paused:
-                    player.player_shop()
-                elif event.key == pygame.K_q and Game_info.game_paused:
-                    Exiting.quit_game()
-                elif event.key == pygame.K_c and Game_info.game_paused:
+
+                elif event.key == pygame.K_c and Game_info.wave_cleared:
                     Game_info.level += 1
                     spawner.spawn_aliens(Game_info.level)
-                    player.playerX = Game_info.screenX // 2 - Game_info.iconX // 2
-                    player.playerY = Game_info.screenY
-                    Game_info.game_state = "playing"
-                    Game_info.game_paused = False   
+                    Game_info.game_state = "Playing"
+                    Game_info.wave_cleared = False
+
+                elif event.key == pygame.K_s and (Game_info.game_paused or Game_info.wave_cleared):
+                    player.player_shop()
+
+                elif event.key == pygame.K_q and Game_info.game_paused:
+                    Exiting.quit_game()
 
     def keyboard_input():
         keys = pygame.key.get_pressed()
+        now = pygame.time.get_ticks()
         if Upgrades.booster == True:
             player.speed = Upgrades.booster_speed
 
@@ -404,9 +449,7 @@ class Input_manager:
         if keys[pygame.K_UP] or keys[pygame.K_w]:
             player.playerY -= player.speed * Game_info.dt * 60
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            player.playerY += player.speed * Game_info.dt * 60
-
-        now = pygame.time.get_ticks()    
+            player.playerY += player.speed * Game_info.dt * 60    
         if keys[pygame.K_SPACE] and (now - Game_info.last_shot_time) >= Game_info.bullet_cooldown:
             Game_info.last_shot_time = now
             player.shooting_mechanic()
@@ -426,37 +469,36 @@ mover = Movement()
 animated = Animations()
 
 spawner.spawn_aliens(Game_info.level)
-Game_info.game_state = "Playing"
-
 while True:
+    Input_manager.process()
 
     Game_info.clock_ticks = pygame.time.get_ticks()
     Game_info.dt = Game_info.clock.tick(60) / 1000
-
-    Input_manager.process_events()
-
-    if Game_info.game_paused:
-        Pause_manager.show_pause_screen("'S' to open Upgrade Shops, 'Q' to Quit, or 'ESC/C' to Resume")
-        continue
-
     screen.fill('black')
 
-    Input_manager.keyboard_input() 
+
+    if Game_info.game_paused:
+        Pause_manager.show_pause_screen("'Q' to Quit, or 'ESC' to Resume")
+        continue
+
+    if Game_info.wave_cleared:
+        Pause_manager.show_pause_screen("Wave cleared! Press C to continue or S to Shop", set_paused=False)
+        continue
+
     player.player_position()
     player.coin_collision(Game_info.dt)
     player.update_bullets(screen)
-
-    if Game_info.game_state == "Playing" and len(Alien_info.aliens) == 0:
-        spawner.earn_credits()
-        Game_info.game_state = "Wave_cleared"
-        Pause_manager.show_pause_screen("Wave_cleared Press ESC to continue")
-        spawner.spawn_aliens(Game_info.level)
-        Game_info.game_state = "Playing"
-
-    mover.alien_movement()
     mover.alien_movement()
     mover.collision_check()
     animated.heart_animation()
     player.drawing(screen)
+    player.draw_shields(screen)
 
+    if Game_info.game_state == "Playing" and len(Alien_info.aliens) == 0:
+        spawner.earn_credits()
+        Game_info.game_state = "Wave_cleared"
+        Game_info.wave_cleared = True
+        continue
+
+    Input_manager.keyboard_input()
     pygame.display.flip()
