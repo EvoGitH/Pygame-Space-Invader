@@ -57,16 +57,17 @@ class Info:
     """ Will hold only basic
     information that is reuseable 
     but mutable for the game here"""
+
     clock = pygame.time.Clock()
     ticks = pygame.time.get_ticks()
     dt = clock.tick(60) / 1000
+
     screenX = 1080
     screenY = 720
     iconX = 64
     iconY = 64
-    game_state = "Playing"
-    game_paused = False
-    wave_cleared = False
+
+    game_state = "Paused"
     level = 1
 
     def show_message(self, text, duration=1000):
@@ -77,35 +78,47 @@ class Info:
         pygame.display.flip()
         pygame.time.delay(duration)
 
+    def pause_screen(self, message):
+            font = pygame.font.Font(None, 50)  
+            overlay = pygame.Surface((Info.screenX, Info.screenY), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            text = font.render(message, True, (255, 255, 255)) 
+            text_rect = text.get_rect(center=(self.screenX//2, self.screenY//2))
+            screen.blit(text, text_rect)
+
+
+
 class Upgrades:
     """ Will contain the player
     shop inventory, and be updatable
     as needed. """
 
     upgrades = {
-    "1": {  # Key to trigger the upgrade
-        "name": "Permanent Speed Boost",
-        "cost": 800,
-        "flag": "booster",
-        "effect": lambda: setattr(Upgrades, "booster", True)
+    "speed": {
+        "cost": 100,
+        "effect": lambda player: setattr(player, "speed", player.speed * 3),
+        "repeatable": False,   
+        "purchased": False     
     },
-    "2": {
-        "name": "Triple Shot",
-        "cost": 500,
-        "flag": "triple_shot",
-        "effect": lambda: setattr(Upgrades, "triple_shot", True)
-        }
+    "health": {
+        "cost": 50,
+        "effect": lambda player: setattr(player, "health", min(player.max_health, player.health + 20)),
+        "repeatable": True
+    }
 }
+
 
 class Player:
     """ Will hold instanced 
     information for the Player"""
+
     def __init__(self):
         self.speed = 3
         self.player_lives = 3
         self.credits = 0
         self.inventory = []
         self.bullets = []
+        self.points = 0
 
         self.playerX = Info.screenX / 2
         self.playerY = Info.screenY
@@ -120,35 +133,38 @@ class Player:
         self.shield_duration = 0
         self.shield_coin_active = False
 
-    def draw_shields(self, screen):
-        """Draws 1-3 visual blue rings 
-        around player depending 
-        on shield count"""
-
-        for i in range(self.shield):
-            radius = max(Info.iconX, Info.iconY) + (i * 10)  # each ring slightly bigger
-            shield_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
-            pygame.draw.circle(shield_surface, (0, 0, 255, 100), (radius, radius), radius, 4)  # 4px thick ring
-            screen.blit(shield_surface, (self.playerX - radius + Info.iconX/2, self.playerY - radius + Info.iconY/2))
+        self.shield_coin_rect = Assets.shield_coin_image[0].get_rect(
+            topleft=(random.randint(50, Info.screenX - 50), 
+                     random.randint(Info.screenY // 2, Info.screenY - 50))
+                     )
+        self.coin_collected = False
+        self.coin_frame = 0
+        self.coin_timer = 0
+        self.coin_effect_timer = 0
+        self.coin_speed = 250   
+        self.coin_duration = 5000
+        self.coin_respawn_delay = 5000
+        self.coin_respawn_timer = 0
+        self.float_amplitude = 5
     
     def player_movement(self):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            player.playerX -= player.speed * Info.dt * 60
+            self.playerX -= self.speed * Info.dt * 60
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            player.playerX += player.speed * Info.dt * 60
+            self.playerX += self.speed * Info.dt * 60
         if keys[pygame.K_UP] or keys[pygame.K_w]:
-            player.playerY -= player.speed * Info.dt * 60
+            self.playerY -= self.speed * Info.dt * 60
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            player.playerY += player.speed * Info.dt * 60    
+            self.playerY += self.speed * Info.dt * 60 
 
     def update_position(self):
         self.playerX = max(0, min(self.playerX, Info.screenX - Info.iconX))
-        self.playerY = max(450, min(self.playerY, Info.screenY - Info.iconY))
+        self.playerY = max(350, min(self.playerY, Info.screenY - Info.iconY))
         self.player_box.topleft = (self.playerX, self.playerY)
 
     def draw_player(self, screen):
-        screen.blit(Assets.player_image, self.player_box)
+        screen.blit(Assets.player_image, self.player_box)        
 
 class Enemy:
     """ Will contain everything
@@ -250,21 +266,21 @@ class Weapons:
     bullet_active = False
 
     def weapon_mechanic(self):
-            if player.triple_shot_unlock:
-            # Fire 3 bullets: center, left, right
-                Assets.triple_sound.set_volume(0.5)
-                Assets.triple_sound.play() # Audio file
+        if player.triple_shot_unlock:
+        # Fire 3 bullets: center, left, right
+            Assets.triple_sound.set_volume(0.5)
+            Assets.triple_sound.play() # Audio file
 
-                bullet1 = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
-                bullet2 = pygame.Rect(player.player_box.centerx - 17, player.player_box.top - 10, 4, 10)
-                bullet3 = pygame.Rect(player.player_box.centerx + 13, player.player_box.top - 10, 4, 10)
-                player.bullets.extend([bullet1, bullet2, bullet3])
-            else:
-            # Single bullet, basic beginner.
-                Assets.starter_sound.set_volume(0.5)
-                Assets.starter_sound.play()
-                bullet = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
-                player.bullets.append(bullet)
+            bullet1 = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
+            bullet2 = pygame.Rect(player.player_box.centerx - 17, player.player_box.top - 10, 4, 10)
+            bullet3 = pygame.Rect(player.player_box.centerx + 13, player.player_box.top - 10, 4, 10)
+            player.bullets.extend([bullet1, bullet2, bullet3])
+        else:
+        # Single bullet, basic beginner.
+            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.play()
+            bullet = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
+            player.bullets.append(bullet)
 
     def __init__(self, player, enemy):
         self.player = player
@@ -298,6 +314,9 @@ class Movement:
     enemies and player, but also updates to
     player character, dash/short-teleports, etc."""
 
+    def __init__(self):
+        self.player = player
+
     def collision_check(self):
         info = Info()
         for alien in enemy.aliens[:]:
@@ -318,47 +337,166 @@ class Movement:
                 if player.player_lives == 0:
                     Exiting.quit_game()
 
+    def coin_collision(self):
+        
+        if self.player.player_box.colliderect(self.player.shield_coin_rect) and not self.player.shield_coin_active:
+            self.player.shield += 1
+            self.player.coin_collected = True
+            self.player.shield_coin_active = True
+            self.player.coin_effect_timer = 0
+            Assets.shield_sound.set_volume(0.3)
+            Assets.shield_sound.play()
 
+        if self.player.shield_coin_active:
+            self.player.coin_effect_timer += Info.dt * 1000
+            effect_duration = 15000
+            if self.player.coin_effect_timer >= effect_duration:
+                self.player.shield_coin_active = False
+                self.player.shield -= 1
+
+        if self.player.coin_collected and not self.player.shield_coin_active:
+            self.player.coin_respawn_timer += Info.dt * 1000
+            if self.player.coin_respawn_timer >= self.player.coin_respawn_delay:
+                self.player.shield_coin_rect.topleft = (
+                    random.randint(50, Info.screenX -50), 
+                    random.randint(Info.screenY // 2, Info.screenY - 50)
+                    )
+                self.player.coin_collected = False
+                self.player.coin_respawn_timer = 0
+  
 class Shop:
-    """ Will contain the basic
-    structure of code that'll allow player 
-    to buy upgrades from Upgrade class"""
 
-    def __init__(self, player):
+    def __init__(self, player, info):
         self.player = player
-    
+        self.info = info
+        self.active = False
+        self.key_map = {
+            pygame.K_1: "speed",
+            pygame.K_2: "health"
+        }
+
+    def player_shop(self, screen):
+        if not self.active:
+            return
+        font = pygame.font.Font(None, 50)
+        screen.blit(Assets.background_image, (0, 0))
+        y_offset = 200
+
+        for key, upgrade in Upgrades.upgrades.items():
+            display_name = upgrade.get("name", key)
+            text = font.render(
+                f"Press '{key}' to buy {display_name}: {upgrade['cost']} Credits",
+                True, (255, 255, 255)
+            )
+            screen.blit(text, (Info.screenX // 2 - text.get_width() // 2, y_offset))
+            y_offset += 70
+
+        money_text = font.render(f"CREDITS: {self.player.credits}", True, (255, 255, 255))
+        screen.blit(money_text, (15, 127))
+
     def buy_upgrade(self, key):
-        if key in Upgrades.upgrades:
-            upgrade = Upgrades.upgrades[key]
+        if key in self.key_map:
+            upgrade_name = self.key_map[key]
+            upgrade = Upgrades.upgrades[upgrade_name]
 
-            if getattr(self.player, f"{upgrade['flag']}_unlock", False):
-                print(f"{upgrade['name']} already unlocked!")
-                return False
-            if self.player.credits >= upgrade["cost"]:
-                self.player.credits -= upgrade["cost"]
-                setattr(self.player, f"{upgrade['flag']}_unlock", True)
-                print(f"Purchased {upgrade['name']}!")
-                return True
-            else:
-                print("Not enough credits!")
-                return False
+        # Check if already bought and non-repeatable
+        if not upgrade.get("repeatable", False) and upgrade.get("purchased", False):
+            self.info.show_message(f"{upgrade_name} already purchased!", duration=1200)
+            return
 
+        if self.player.credits >= upgrade["cost"]:
+            self.player.credits -= upgrade["cost"]
+            upgrade["effect"](self.player)
+            if not upgrade.get("repeatable", False):
+                upgrade["purchased"] = True
+            self.info.show_message(f"{upgrade_name} purchased successfully! Current credits: {self.player.credits}", duration=1200)
+        else:
+            self.info.show_message("Not enough credits!", duration=1200)
+ 
 class Animations:
     """Will contain basic code for
     flipping 2 images back and forth
-    to simulate animation"""
+    to simulate animation, and also
+    static information on screen"""
 
     heart_animation_timer = 0
     heart_animation_speed = 150
     heart_frame = 0
+    def __init__(self):
+        self.player = player
 
-    def heart_animation(self):
-        Animations.heart_animation_timer += Info.dt * 1000
-        if Animations.heart_animation_timer >= Animations.heart_animation_speed:
-            Animations.heart_animation_timer = 0
-            Animations.heart_frame = (Animations.heart_frame + 1) % len(Assets.hearts_image)
-        for i in range(player.player_lives):
-            screen.blit(Assets.hearts_image[Animations.heart_frame], (10 + i * 40, 40))
+    def heart_animation(self, screen):
+        self.heart_animation_timer += Info.dt * 1000
+        if self.heart_animation_timer >= self.heart_animation_speed:
+            self.heart_animation_timer = 0
+            self.heart_frame = (self.heart_frame + 1) % len(Assets.hearts_image)
+        for i in range(self.player.player_lives):
+            screen.blit(Assets.hearts_image[self.heart_frame], (10 + i * 40, 40))
+
+    def draw_shields(self, screen):
+        """Draws 1-3 visual blue rings 
+        around player depending 
+        on shield tokens collect, will last
+        15 seconds before expiring."""
+
+        for i in range(self.player.shield):
+            radius = max(Info.iconX, Info.iconY) + (i * 10)  # each ring slightly bigger
+            shield_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(shield_surface, (0, 0, 255, 100), (radius, radius), radius, 4)  # 4px thick ring
+            screen.blit(shield_surface, (self.player.playerX - radius + Info.iconX/2, self.player.playerY - radius + Info.iconY/2))
+
+    def floating_coin(self, screen):   
+
+        if not self.player.coin_collected:
+            shield_image = Assets.shield_coin_image[self.player.coin_frame]
+
+            # Switches between two images, creating a *Flash* effect.
+            self.player.coin_timer += Info.dt * 1000
+            if self.player.coin_timer >= self.player.coin_speed:
+                self.player.coin_timer = 0
+                self.player.coin_frame = (self.player.coin_frame + 1) % len(Assets.shield_coin_image)
+            
+            # Floating animation
+            float_offset = math.sin(pygame.time.get_ticks() * 0.005) * self.player.float_amplitude
+            draw_rect = shield_image.get_rect(center=self.player.shield_coin_rect.center) 
+            draw_rect.y += float_offset
+    
+            screen.blit(shield_image, draw_rect)
+
+class Inputs:
+    def __init__(self,player, shop, info):
+        self.player = player
+        self.shop = shop
+        self.info = info
+
+    def keyboard_inputs(self, events):
+        for event in events:
+
+            if event.type == pygame.QUIT:
+                Exiting.quit_game()  
+
+            elif event.type == pygame.KEYDOWN:
+
+                if event.key == pygame.K_ESCAPE:
+                    if info.game_state == "Playing":
+                        info.game_state = "Paused"
+                    elif info.game_state == "Paused":
+                        info.game_state == "Playing"
+                    shop.active = False
+
+                elif event.key == pygame.K_s and (info.game_state in ["Paused", "WaveCleared"]):
+                    self.shop.active = True
+
+                elif event.key == pygame.K_c and self.info.game_state == "WaveCleared":
+                    self.info.level += 1
+                    enemy.spawn_aliens(self.info.level, self.player)
+                    self.info.game_state = "Playing"
+
+                elif event.key == pygame.K_q and self.info.game_state in ["Paused", "WaveCleared"]:
+                    Exiting.quit_game()
+
+                elif self.shop.active:
+                    self.shop.buy_upgrade(event.key)
 
 screen = pygame.display.set_mode((Info.screenX, Info.screenY))
 
@@ -366,36 +504,59 @@ pygame.display.set_caption("Alien Invaders")
 pygame.display.set_icon(Assets.game_icon)
 Assets.animation_images()
 
+info = Info()
 player = Player()
 enemy = Enemy()
 enemy.spawn_aliens(Info.level, player)
 weapon = Weapons(player, enemy)
 animated = Animations()
-mover = Movement()
+move = Movement()
+shop = Shop(player, info)
+inputs = Inputs(player, shop, info)
 
 while True:
+    events = pygame.event.get()
+    for e in events:
+        if e.type == pygame.QUIT:
+            Exiting.quit_game()
 
-    Info.clock_ticks = pygame.time.get_ticks()
-    Info.dt = Info.clock.tick(60) / 1000
-    screen.fill('black')
+    inputs.keyboard_inputs(events)
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            exit()
+    info.dt = info.clock.tick(60) / 1000
+    info.clock_ticks = pygame.time.get_ticks()
 
-    player.player_movement()
-    player.update_position()
-    enemy.alien_movement(player, screen)
-    player.draw_player(screen)
-    mover.collision_check()
-    animated.heart_animation()
-    weapon.shooting_function()
-    weapon.update_bullets(screen)
+    screen.fill("black")
 
-    if Info.game_state == "Playing" and len(enemy.aliens) == 0:
-        enemy.earn_credits()
-        Info.game_state = "Wave_cleared"
-        Info.wave_cleared = True
-        continue
+    if info.game_state == "Paused":
+        info.pause_screen("Q to Quit, S to Shop or C to Continue (Paused)")
+        shop.player_shop(screen)
+
+    elif info.game_state == "WaveCleared":
+        info.pause_screen("Q to Quit, S to Shop or C to Continue (Wave Cleared)")
+        shop.player_shop(screen)
+
+    elif info.game_state == "Playing":
+
+        player.player_movement()
+        player.update_position()
+        player.draw_player(screen)
+
+        enemy.alien_movement(player, screen)
+        move.collision_check()
+        move.coin_collision()
+
+        animated.heart_animation(screen)
+        animated.floating_coin(screen)
+        animated.draw_shields(screen)
+
+        weapon.shooting_function()
+        weapon.update_bullets(screen)
+
+        if len(enemy.aliens) == 0:
+            enemy.earn_credits()
+            info.game_state = "WaveCleared"
+
+    if shop.active:
+        shop.player_shop(screen)
 
     pygame.display.flip()
