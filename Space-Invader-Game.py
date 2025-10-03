@@ -86,34 +86,12 @@ class Info:
             text_rect = text.get_rect(center=(self.screenX//2, self.screenY//2))
             screen.blit(text, text_rect)
 
-
-
-class Upgrades:
-    """ Will contain the player
-    shop inventory, and be updatable
-    as needed. """
-
-    upgrades = {
-    "speed": {
-        "cost": 100,
-        "effect": lambda player: setattr(player, "speed", player.speed * 3),
-        "repeatable": False,   
-        "purchased": False     
-    },
-    "health": {
-        "cost": 50,
-        "effect": lambda player: setattr(player, "health", min(player.max_health, player.health + 20)),
-        "repeatable": True
-    }
-}
-
-
 class Player:
     """ Will hold instanced 
     information for the Player"""
 
     def __init__(self):
-        self.speed = 3
+        self.speed = 4
         self.player_lives = 3
         self.credits = 0
         self.inventory = []
@@ -124,9 +102,7 @@ class Player:
         self.playerY = Info.screenY
         self.player_box = pygame.Rect(self.playerX, self.playerY, Info.iconX, Info.iconY)
         
-        self.fly_boost_unlock = False
-        self.fly_boost_speed = 10
-        self.triple_shot_unlock = False
+        self.triple_shot_unlocked = False
 
         self.shield = 0
         self.shield_max = 3
@@ -165,6 +141,31 @@ class Player:
 
     def draw_player(self, screen):
         screen.blit(Assets.player_image, self.player_box)        
+
+class Upgrades:
+    """ Will contain the player
+    shop inventory, and be updatable
+    as needed. 
+
+    Visit "class Shop" to update key_map
+
+    Example: *setattr(class/"object", variable/"attribute name", effect/"value")*
+    """
+
+    upgrades = {
+    "speed": {
+        "cost": 100,
+        "effect": lambda player: setattr(player, "speed", player.speed * 2),
+        "repeatable": False,   
+        "purchased": False     
+    },
+    "triple shot": {
+        "cost": 300,
+        "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
+        "repeatable": False,
+        "purchased": False
+    }
+}
 
 class Enemy:
     """ Will contain everything
@@ -206,7 +207,7 @@ class Enemy:
         self.last_wave_count = len(self.aliens)
 
     def earn_credits(self):
-        player.credits +=self.last_wave_count * 100 
+        player.credits +=self.last_wave_count * 100
     
     def alien_movement(self, player, screen):
         hit_edge = False
@@ -265,26 +266,27 @@ class Weapons:
     bullet_rect = None
     bullet_active = False
 
+    def __init__(self, player, enemy, info):
+        self.player = player
+        self.enemy = enemy
+        self.info = info
+
     def weapon_mechanic(self):
-        if player.triple_shot_unlock:
+        if self.player.triple_shot_unlocked:
         # Fire 3 bullets: center, left, right
             Assets.triple_sound.set_volume(0.5)
             Assets.triple_sound.play() # Audio file
 
-            bullet1 = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
-            bullet2 = pygame.Rect(player.player_box.centerx - 17, player.player_box.top - 10, 4, 10)
-            bullet3 = pygame.Rect(player.player_box.centerx + 13, player.player_box.top - 10, 4, 10)
-            player.bullets.extend([bullet1, bullet2, bullet3])
+            bullet1 = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
+            bullet2 = pygame.Rect(self.player.player_box.centerx - 17, self.player.player_box.top - 10, 4, 10)
+            bullet3 = pygame.Rect(self.player.player_box.centerx + 13, self.player.player_box.top - 10, 4, 10)
+            self.player.bullets.extend([bullet1, bullet2, bullet3])
         else:
         # Single bullet, basic beginner.
             Assets.starter_sound.set_volume(0.5)
             Assets.starter_sound.play()
-            bullet = pygame.Rect(player.player_box.centerx - 2, player.player_box.top - 10, 4, 10)
-            player.bullets.append(bullet)
-
-    def __init__(self, player, enemy):
-        self.player = player
-        self.enemy = enemy
+            bullet = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
+            self.player.bullets.append(bullet)
 
     def shooting_function(self):
         keys = pygame.key.get_pressed()
@@ -295,7 +297,7 @@ class Weapons:
 
     def update_bullets(self, screen):
         for bullet in self.player.bullets[:]:
-            bullet.y -= Weapons.bullet_speed * Info.dt
+            bullet.y -= self.bullet_speed * self.info.dt
             pygame.draw.rect(screen, (255, 255, 0), bullet)
 
             if bullet.bottom < 0:
@@ -307,34 +309,37 @@ class Weapons:
                     self.enemy.aliens.remove(alien)
                     if bullet in self.player.bullets:
                         self.player.bullets.remove(bullet)
+                        self.player.points += 100
                     break
+
     
 class Movement:
     """ Contains collision checks between
     enemies and player, but also updates to
     player character, dash/short-teleports, etc."""
 
-    def __init__(self):
+    def __init__(self, enemy, player, info):
         self.player = player
+        self.enemy = enemy
+        self.info = info
 
     def collision_check(self):
-        info = Info()
         for alien in enemy.aliens[:]:
-            if player.player_box.colliderect(alien["rect"]):
-                if player.shield > 0:
-                    player.shield -= 1
-                    info.show_message("Shield absorbed the hit!", duration=150)
-                    if player.shield == 0:
+            if self.player.player_box.colliderect(alien["rect"]):
+                if self.player.shield > 0:
+                    self.player.shield -= 1
+                    self.info.show_message("Shield absorbed the hit!", duration=150)
+                    if self.player.shield == 0:
                         Assets.shield_failed_sound.set_volume(0.1)
                         Assets.shield_failed_sound.play()
 
                 else:
-                    player.player_lives -= 1
-                    info.show_message("Ouch! Lost a Life", duration=150)
-                if alien in enemy.aliens:
-                    enemy.aliens.remove(alien)
+                    self.player.player_lives -= 1
+                    self.info.show_message("Ouch! Lost a Life", duration=150)
+                if alien in self.enemy.aliens:
+                    self.enemy.aliens.remove(alien)
                     
-                if player.player_lives == 0:
+                if self.player.player_lives == 0:
                     Exiting.quit_game()
 
     def coin_collision(self):
@@ -365,6 +370,13 @@ class Movement:
                 self.player.coin_respawn_timer = 0
   
 class Shop:
+    """Player Shop
+    functions defined are
+    Shop background, and
+    Shop's buying function
+    
+    Update the key_map to add
+    new upgrades to shop."""
 
     def __init__(self, player, info):
         self.player = player
@@ -372,7 +384,7 @@ class Shop:
         self.active = False
         self.key_map = {
             pygame.K_1: "speed",
-            pygame.K_2: "health"
+            pygame.K_2: "triple shot"
         }
 
     def player_shop(self, screen):
@@ -393,6 +405,8 @@ class Shop:
 
         money_text = font.render(f"CREDITS: {self.player.credits}", True, (255, 255, 255))
         screen.blit(money_text, (15, 127))
+        info_text = font.render("ESC to Resume", True, (255, 255, 255))
+        screen.blit(info_text, (15, 500))
 
     def buy_upgrade(self, key):
         if key in self.key_map:
@@ -422,11 +436,13 @@ class Animations:
     heart_animation_timer = 0
     heart_animation_speed = 150
     heart_frame = 0
-    def __init__(self):
+
+    def __init__(self, player, info):
         self.player = player
+        self.info = info
 
     def heart_animation(self, screen):
-        self.heart_animation_timer += Info.dt * 1000
+        self.heart_animation_timer += self.info.dt * 1000
         if self.heart_animation_timer >= self.heart_animation_speed:
             self.heart_animation_timer = 0
             self.heart_frame = (self.heart_frame + 1) % len(Assets.hearts_image)
@@ -440,10 +456,10 @@ class Animations:
         15 seconds before expiring."""
 
         for i in range(self.player.shield):
-            radius = max(Info.iconX, Info.iconY) + (i * 10)  # each ring slightly bigger
+            radius = max(self.info.iconX, self.info.iconY) + (i * 10)  # each ring slightly bigger
             shield_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
             pygame.draw.circle(shield_surface, (0, 0, 255, 100), (radius, radius), radius, 4)  # 4px thick ring
-            screen.blit(shield_surface, (self.player.playerX - radius + Info.iconX/2, self.player.playerY - radius + Info.iconY/2))
+            screen.blit(shield_surface, (self.player.playerX - radius + self.info.iconX/2, self.player.playerY - radius + self.info.iconY/2))
 
     def floating_coin(self, screen):   
 
@@ -451,7 +467,7 @@ class Animations:
             shield_image = Assets.shield_coin_image[self.player.coin_frame]
 
             # Switches between two images, creating a *Flash* effect.
-            self.player.coin_timer += Info.dt * 1000
+            self.player.coin_timer += self.info.dt * 1000
             if self.player.coin_timer >= self.player.coin_speed:
                 self.player.coin_timer = 0
                 self.player.coin_frame = (self.player.coin_frame + 1) % len(Assets.shield_coin_image)
@@ -462,6 +478,13 @@ class Animations:
             draw_rect.y += float_offset
     
             screen.blit(shield_image, draw_rect)
+
+    def screen_text(self, screen):
+        font = pygame.font.Font(None, 35)
+
+        points_text = font.render(f"Score: {self.player.points}", True, (255, 255, 255))
+        screen.blit(points_text, (15, 10))
+
 
 class Inputs:
     def __init__(self,player, shop, info):
@@ -508,9 +531,9 @@ info = Info()
 player = Player()
 enemy = Enemy()
 enemy.spawn_aliens(Info.level, player)
-weapon = Weapons(player, enemy)
-animated = Animations()
-move = Movement()
+weapon = Weapons(player, enemy, info)
+animated = Animations(player, info)
+move = Movement(enemy, player, info)
 shop = Shop(player, info)
 inputs = Inputs(player, shop, info)
 
@@ -559,4 +582,5 @@ while True:
     if shop.active:
         shop.player_shop(screen)
 
+    animated.screen_text(screen)
     pygame.display.flip()
