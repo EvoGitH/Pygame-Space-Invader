@@ -20,20 +20,20 @@ class Assets:
     and music for the game"""
 
     # Images
-    game_icon = pygame.image.load('Game Assets/ship.png')
-    player_image = pygame.image.load('Game Assets/ship.png')
-    enemy_image = pygame.image.load('Game Assets/alien_basic.png')
-    background_image = pygame.image.load('Game Assets/shop_background.png')
-    buy_button_image = pygame.image.load('Game Assets/buy_button.png')
-    close_button_image = pygame.image.load('Game Assets/close_button.png')
+    game_icon = pygame.image.load('si_game_assets/images/ship.png')
+    player_image = pygame.image.load('si_game_assets/images/ship.png')
+    enemy_image = pygame.image.load('si_game_assets/images/alien_basic.png')
+    background_image = pygame.image.load('si_game_assets/images/shop_background.png')
+    buy_button_image = pygame.image.load('si_game_assets/images/buy_button.png')
+    close_button_image = pygame.image.load('si_game_assets/images/close_button.png')
 
     # Audio effects
-    starter_sound = pygame.mixer.Sound('AudioAssets/starter_weapon.mp3')
-    triple_sound = pygame.mixer.Sound('AudioAssets/triple_power_up.wav')
-    cannon_sound = pygame.mixer.Sound('AudioAssets/cannon_shot.wav')
-    gatling_sound = pygame.mixer.Sound('AudioAssets/gatling_laser.wav')
-    shield_sound = pygame.mixer.Sound('AudioAssets/shield_energy.wav')
-    shield_failed_sound = pygame.mixer.Sound('AudioAssets/shield_failed.wav')
+    starter_sound = pygame.mixer.Sound('si_game_assets/audio/starter_weapon.mp3')
+    triple_sound = pygame.mixer.Sound('si_game_assets/audio/triple_power_up.wav')
+    cannon_sound = pygame.mixer.Sound('si_game_assets/audio/cannon_shot.wav')
+    gatling_sound = pygame.mixer.Sound('si_game_assets/audio/gatling_laser.wav')
+    shield_sound = pygame.mixer.Sound('si_game_assets/audio/shield_energy.wav')
+    shield_failed_sound = pygame.mixer.Sound('si_game_assets/audio/shield_failed.wav')
 
     # *Animated* images
     def animation_images():
@@ -41,16 +41,16 @@ class Assets:
         before these images can be converted"""
 
         Assets.hearts_image = [
-            pygame.image.load('Game Assets/heart1.png').convert_alpha(), 
-            pygame.image.load('Game Assets/heart2.png').convert_alpha()
+            pygame.image.load('si_game_assets/animated_images/heart1.png').convert_alpha(), 
+            pygame.image.load('si_game_assets/animated_images/heart2.png').convert_alpha()
             ]
         Assets.three_shot_image = [
-            pygame.image.load('Game Assets/three_shot_power1.png').convert_alpha(), 
-            pygame.image.load('Game Assets/three_shot_power2.png').convert_alpha()
+            pygame.image.load('si_game_assets/animated_images/three_shot_power1.png').convert_alpha(), 
+            pygame.image.load('si_game_assets/animated_images/three_shot_power2.png').convert_alpha()
             ]
         Assets.shield_coin_image = [
-            pygame.image.load('Game Assets/shield_coin1.png').convert_alpha(),
-            pygame.image.load('Game Assets/shield_coin2.png').convert_alpha()
+            pygame.image.load('si_game_assets/animated_images/shield_coin1.png').convert_alpha(),
+            pygame.image.load('si_game_assets/animated_images/shield_coin2.png').convert_alpha()
         ]
     
 class Info:
@@ -153,13 +153,13 @@ class Upgrades:
     """
 
     upgrades = {
-    "speed": {
+    "(1) speed": {
         "cost": 100,
         "effect": lambda player: setattr(player, "speed", player.speed * 2),
         "repeatable": False,   
         "purchased": False     
     },
-    "triple shot": {
+    "(2) triple shot": {
         "cost": 300,
         "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
         "repeatable": False,
@@ -383,8 +383,8 @@ class Shop:
         self.info = info
         self.active = False
         self.key_map = {
-            pygame.K_1: "speed",
-            pygame.K_2: "triple shot"
+            pygame.K_1: "(1) speed",
+            pygame.K_2: "(2) triple shot"
         }
 
     def player_shop(self, screen):
@@ -487,7 +487,7 @@ class Animations:
 
 
 class Inputs:
-    def __init__(self,player, shop, info):
+    def __init__(self, player, shop, info):
         self.player = player
         self.shop = shop
         self.info = info
