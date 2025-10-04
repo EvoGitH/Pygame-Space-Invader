@@ -58,17 +58,17 @@ class Info:
     information that is reuseable 
     but mutable for the game here"""
 
-    clock = pygame.time.Clock()
-    ticks = pygame.time.get_ticks()
-    dt = clock.tick(60) / 1000
-
     screenX = 1080
     screenY = 720
     iconX = 64
     iconY = 64
 
-    game_state = "Paused"
-    level = 1
+    def __init__(self):
+        self.clock = pygame.time.Clock()
+        self.ticks = pygame.time.get_ticks()
+        self.dt = self.clock.tick(60) / 1000 # dt = Delta Time
+        self.game_state = "Paused"
+        self.level = 1
 
     def show_message(self, text, duration=1000):
         font = pygame.font.Font(None, 50)
@@ -126,13 +126,13 @@ class Player:
     def player_movement(self):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.playerX -= self.speed * Info.dt * 60
+            self.playerX -= self.speed * info.dt * 60
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.playerX += self.speed * Info.dt * 60
+            self.playerX += self.speed * info.dt * 60
         if keys[pygame.K_UP] or keys[pygame.K_w]:
-            self.playerY -= self.speed * Info.dt * 60
+            self.playerY -= self.speed * info.dt * 60
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            self.playerY += self.speed * Info.dt * 60 
+            self.playerY += self.speed * info.dt * 60 
 
     def update_position(self):
         self.playerX = max(0, min(self.playerX, Info.screenX - Info.iconX))
@@ -171,20 +171,20 @@ class Upgrades:
     shop inventory, and be updatable
     as needed. 
 
-    Visit "class Shop" to update key_map
+    Visit "class Shop" to update key_map, buttons, etc.
 
     Example: *setattr(class/"object", variable/"attribute name", effect/"value")*
     """
 
     upgrades = {
     "speed": {
-        "cost": 100,
+        "cost": 500,
         "effect": lambda player: setattr(player, "speed", player.speed * 2),
         "repeatable": False,   
         "purchased": False     
     },
     "triple shot": {
-        "cost": 300,
+        "cost": 800,
         "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
         "repeatable": False,
         "purchased": False
@@ -196,25 +196,31 @@ class Enemy:
     about the Alien enemy and its
     basic movement script """
 
-    def __init__(self):
+    def __init__(self, player, info):
+        self.player = player
+        self.info = info
+
         self.aliens = []
         self.alien_direction = 1
         self.alien_speed = 5
         self.alien_drop_amount = 60
         self.vertical_padding = 50
-        self.rows = min(5, 0 + Info.level)
-        self.columns = min(10,10 + Info.level)
+
+
+    
+    def spawn_aliens(self, level):
+        self.player.bullets = []
+        self.aliens = []
+        self.info.game_state = "Playing"
+
+        self.rows = min(5, 0 + self.info.level)
+        self.columns = min(10,10 + self.info.level)
         self.alien_width = Assets.enemy_image.get_width()
         self.alien_height = Assets.enemy_image.get_height()
         self.total_width = self.columns * self.alien_width + (self.columns - 1) * 20
-        self.start_x = (Info.screenX - self.total_width) // 2
+        self.start_x = (self.info.screenX - self.total_width) // 2
         self.start_y = self.vertical_padding
 
-    
-    def spawn_aliens(self, level, player):
-        player.bullets = []
-        self.aliens = []
-        Info.game_state = "Playing"
         for row in range(self.rows):
             for col in range(self.columns):
                 x = self.start_x + col * (self.alien_width + 20)
@@ -228,12 +234,9 @@ class Enemy:
                     "y_speed": 0
                 })
         self.alien_speed = 5 + (level * 0.3)
-        self.last_wave_count = len(self.aliens)
 
-    def earn_credits(self):
-        player.credits +=self.last_wave_count * 100
     
-    def alien_movement(self, player, screen):
+    def alien_movement(self, screen):
         hit_edge = False
         edge_buffer = 5
 
@@ -241,16 +244,16 @@ class Enemy:
             rect = alien["rect"]
 
             if not alien["independent"]:  
-                rect.x += self.alien_speed * self.alien_direction * Info.dt * 60
+                rect.x += self.alien_speed * self.alien_direction * self.info.dt * 60
 
                 if rect.left < edge_buffer:
                     rect.left = edge_buffer
                     hit_edge = True
-                elif rect.right > Info.screenX - edge_buffer:
-                    rect.right = Info.screenX - edge_buffer
+                elif rect.right > self.info.screenX - edge_buffer:
+                    rect.right = self.info.screenX - edge_buffer
                     hit_edge = True
 
-                if rect.top > player.playerY:
+                if rect.top > self.player.playerY:
                     alien["independent"] = True
                     alien["x_speed"] = random.choice([-2, -1, 1, 2])
                     alien["y_speed"] = random.randint(1, 3)
@@ -259,10 +262,10 @@ class Enemy:
                 rect.x += alien["x_speed"]
                 rect.y += alien["y_speed"]
 
-                if rect.left < 0 or rect.right > Info.screenX:
+                if rect.left < 0 or rect.right > self.info.screenX:
                     alien["x_speed"] *= -1
 
-                if rect.bottom >= Info.screenY:
+                if rect.bottom >= self.info.screenY:
                     alien["independent"] = False
                     alien["x_speed"] = 0
                     alien["y_speed"] = 0
@@ -284,16 +287,16 @@ class Enemy:
 class Weapons:
     """ Mechanics and the
      visuals of game weapons """
-    last_shot_time = 0
-    bullet_speed = 500
-    bullet_cooldown = 200
-    bullet_rect = None
-    bullet_active = False
+
 
     def __init__(self, player, enemy, info):
         self.player = player
         self.enemy = enemy
         self.info = info
+
+        self.last_shot_time = 0
+        self.bullet_speed = 500
+        self.bullet_cooldown = 200
 
     def weapon_mechanic(self):
         if self.player.triple_shot_unlocked:
@@ -334,6 +337,7 @@ class Weapons:
                     if bullet in self.player.bullets:
                         self.player.bullets.remove(bullet)
                         self.player.points += 100
+                        self.player.credits += 100
                     break
 
     
@@ -377,14 +381,14 @@ class Movement:
             Assets.shield_sound.play()
 
         if self.player.shield_coin_active:
-            self.player.coin_effect_timer += Info.dt * 1000
+            self.player.coin_effect_timer += info.dt * 1000
             effect_duration = 15000
             if self.player.coin_effect_timer >= effect_duration:
                 self.player.shield_coin_active = False
                 self.player.shield -= 1
 
         if self.player.coin_collected and not self.player.shield_coin_active:
-            self.player.coin_respawn_timer += Info.dt * 1000
+            self.player.coin_respawn_timer += info.dt * 1000
             if self.player.coin_respawn_timer >= self.player.coin_respawn_delay:
                 self.player.shield_coin_rect.topleft = (
                     random.randint(50, Info.screenX -50), 
@@ -410,6 +414,7 @@ class Shop:
             pygame.K_1: "speed",
             pygame.K_2: "triple shot"
         }
+        
         self.buttons = []
         y_offset = 200
         for key, upgrade_name in self.key_map.items():
@@ -428,6 +433,7 @@ class Shop:
                     )
                 )
                 y_offset += 90
+
         self.back_button = Button(
             x=20,
             y=40,
@@ -483,7 +489,8 @@ class Shop:
         self.back_button.handle_event(event)
 
         if event.type == pygame.KEYDOWN:
-            self.buy_upgrade_by_key(event.key)
+            if event.key not in self.key_map:
+                self.buy_upgrade_by_key(event.key)
             if event.key == pygame.K_ESCAPE:
                 self.active = False
 
@@ -496,13 +503,12 @@ class Animations:
     to simulate animation, and also
     static information on screen"""
 
-    heart_animation_timer = 0
-    heart_animation_speed = 150
-    heart_frame = 0
-
     def __init__(self, player, info):
         self.player = player
         self.info = info
+        self.heart_animation_timer = 0
+        self.heart_animation_speed = 150
+        self.heart_frame = 0
 
     def heart_animation(self, screen):
         self.heart_animation_timer += self.info.dt * 1000
@@ -548,12 +554,15 @@ class Animations:
         points_text = font.render(f"Score: {self.player.points}", True, (255, 255, 255))
         screen.blit(points_text, (15, 10))
 
-
 class Inputs:
-    def __init__(self, player, shop, info):
+    """Keyboard inputs will effect
+    the event keys within this class"""
+
+    def __init__(self, player, shop, info, enemy):
         self.player = player
         self.shop = shop
         self.info = info
+        self.enemy = enemy
 
     def keyboard_inputs(self, events):
         for event in events:
@@ -564,23 +573,28 @@ class Inputs:
             elif event.type == pygame.KEYDOWN:
 
                 if event.key == pygame.K_ESCAPE:
-                    if info.game_state == "Playing":
-                        info.game_state = "Paused"
-                    elif info.game_state == "Paused":
-                        info.game_state == "Playing"
-                    shop.active = False
+                    if self.info.game_state == "Playing":
+                        self.info.game_state = "Paused"
+                    elif self.info.game_state == "Paused":
+                        self.info.game_state = "Playing"
+                    self.shop.active = False
 
                 elif event.key == pygame.K_s and (info.game_state in ["Paused", "WaveCleared"]):
                     self.shop.active = True
 
                 elif event.key == pygame.K_c and self.info.game_state == "WaveCleared":
                     self.info.level += 1
-                    enemy.spawn_aliens(self.info.level, self.player)
+                    self.enemy.spawn_aliens(self.info.level)
+
+                    self.player.playerX = Info.screenX / 2
+                    self.player.playerY = Info.screenY
+                    self.player.update_position()
+
                     self.info.game_state = "Playing"
 
                 elif event.key == pygame.K_q and self.info.game_state in ["Paused", "WaveCleared"]:
                     Exiting.quit_game()
-
+                
                 elif self.shop.active:
                     self.shop.buy_upgrade_by_key(event.key)
 
@@ -592,14 +606,13 @@ Assets.animation_images()
 
 info = Info()
 player = Player()
-enemy = Enemy()
-enemy.spawn_aliens(Info.level, player)
+enemy = Enemy(player, info)
+enemy.spawn_aliens(info.level)
 weapon = Weapons(player, enemy, info)
 animated = Animations(player, info)
 move = Movement(enemy, player, info)
 shop = Shop(player, info)
-inputs = Inputs(player, shop, info)
-button = Button(172, 71)
+inputs = Inputs(player, shop, info, enemy)
 
 while True:
     events = pygame.event.get()
@@ -615,7 +628,7 @@ while True:
     info.dt = info.clock.tick(60) / 1000
     info.clock_ticks = pygame.time.get_ticks()
 
-    screen.fill("black")
+    screen.fill((0, 0, 0))
 
     if info.game_state == "Paused":
         info.pause_screen("Q to Quit, S to Shop or C to Continue (Paused)")
@@ -624,13 +637,14 @@ while True:
     elif info.game_state == "WaveCleared":
         info.pause_screen("Q to Quit, S to Shop or C to Continue (Wave Cleared)")
         shop.draw(screen)
+
     elif info.game_state == "Playing":
 
         player.player_movement()
         player.update_position()
         player.draw_player(screen)
 
-        enemy.alien_movement(player, screen)
+        enemy.alien_movement(screen)
         move.collision_check()
         move.coin_collision()
 
@@ -642,7 +656,6 @@ while True:
         weapon.update_bullets(screen)
 
         if len(enemy.aliens) == 0:
-            enemy.earn_credits()
             info.game_state = "WaveCleared"
 
     if shop.active:
