@@ -142,6 +142,30 @@ class Player:
     def draw_player(self, screen):
         screen.blit(Assets.player_image, self.player_box)        
 
+class Button:
+    def __init__(self, x, y, width=172, height=71, text="Button", color=(0, 0 ,0), hover_color=(255, 255, 255), action=None):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.color = color
+        self.hover_color = hover_color
+        self.action = action
+        self.font = pygame.font.Font(None, 30) 
+
+    def draw(self, screen):
+
+        current_color = self.hover_color if self.rect.collidepoint(pygame.mouse.get_pos()) else self.color
+        pygame.draw.rect(screen, current_color, self.rect)
+
+        text_surface = self.font.render(self.text, True, (255, 255, 255)) 
+        text_rect = text_surface.get_rect(center=self.rect.center)
+        screen.blit(text_surface, text_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: 
+            if self.rect.collidepoint(event.pos):
+                if self.action:
+                    self.action()
+
 class Upgrades:
     """ Will contain the player
     shop inventory, and be updatable
@@ -153,13 +177,13 @@ class Upgrades:
     """
 
     upgrades = {
-    "(1) speed": {
+    "speed": {
         "cost": 100,
         "effect": lambda player: setattr(player, "speed", player.speed * 2),
         "repeatable": False,   
         "purchased": False     
     },
-    "(2) triple shot": {
+    "triple shot": {
         "cost": 300,
         "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
         "repeatable": False,
@@ -383,50 +407,89 @@ class Shop:
         self.info = info
         self.active = False
         self.key_map = {
-            pygame.K_1: "(1) speed",
-            pygame.K_2: "(2) triple shot"
+            pygame.K_1: "speed",
+            pygame.K_2: "triple shot"
         }
-
-    def player_shop(self, screen):
-        if not self.active:
-            return
-        font = pygame.font.Font(None, 50)
-        screen.blit(Assets.background_image, (0, 0))
+        self.buttons = []
         y_offset = 200
+        for key, upgrade_name in self.key_map.items():
+                upgrade_info = Upgrades.upgrades[upgrade_name]
+                button_text = f"[{pygame.key.name(key).upper()}] {upgrade_name} ({upgrade_info['cost']} Credits)"
+                self.buttons.append(
+                    Button(
+                        x=Info.screenX // 2 - 150,
+                        y=y_offset,
+                        width=300,
+                        height=71,
+                        text=button_text,
+                        color=(0,128,255),
+                        hover_color=(0,200,255),
+                        action=lambda n=upgrade_name: self.buy_upgrade_by_name(n)
+                    )
+                )
+                y_offset += 90
+        self.back_button = Button(
+            x=20,
+            y=40,
+            width=100,
+            height=50,
+            text="BACK",
+            color=(255,0,0),
+            hover_color=(255,100,100),
+            action=self.close_shop 
+        )
 
-        for key, upgrade in Upgrades.upgrades.items():
-            display_name = upgrade.get("name", key)
-            text = font.render(
-                f"Press '{key}' to buy {display_name}: {upgrade['cost']} Credits",
-                True, (255, 255, 255)
-            )
-            screen.blit(text, (Info.screenX // 2 - text.get_width() // 2, y_offset))
-            y_offset += 70
-
-        money_text = font.render(f"CREDITS: {self.player.credits}", True, (255, 255, 255))
-        screen.blit(money_text, (15, 127))
-        info_text = font.render("ESC to Resume", True, (255, 255, 255))
-        screen.blit(info_text, (15, 500))
-
-    def buy_upgrade(self, key):
-        if key in self.key_map:
-            upgrade_name = self.key_map[key]
-            upgrade = Upgrades.upgrades[upgrade_name]
-
+    def buy_upgrade_by_name(self, upgrade_name):
+        upgrade = Upgrades.upgrades[upgrade_name]
         # Check if already bought and non-repeatable
         if not upgrade.get("repeatable", False) and upgrade.get("purchased", False):
-            self.info.show_message(f"{upgrade_name} already purchased!", duration=1200)
+            self.info.show_message(f"{upgrade_name} already purchased!", duration=1000)
             return
-
         if self.player.credits >= upgrade["cost"]:
             self.player.credits -= upgrade["cost"]
             upgrade["effect"](self.player)
             if not upgrade.get("repeatable", False):
                 upgrade["purchased"] = True
-            self.info.show_message(f"{upgrade_name} purchased successfully! Current credits: {self.player.credits}", duration=1200)
+            self.info.show_message(f"{upgrade_name} purchased successfully! Current credits: {self.player.credits}", duration=1000)
         else:
-            self.info.show_message("Not enough credits!", duration=1200)
- 
+            self.info.show_message("Not enough credits!", duration=1000)
+        
+    def buy_upgrade_by_key(self, key):
+        if key in self.key_map:
+            upgrade_name = self.key_map[key]
+            self.buy_upgrade_by_name(upgrade_name)
+    
+    def draw(self, screen):
+        if not self.active:
+            return
+        screen.blit(Assets.background_image, (0, 0))
+
+        for button in self.buttons:
+            button.draw(screen)
+
+        self.back_button.draw(screen)
+        font = pygame.font.Font(None, 40)
+        money_text = font.render(f"CREDITS: {self.player.credits}", True, (255, 255, 255))
+        screen.blit(money_text, (15, 120))
+        info_text = font.render("ESC to Resume", True, (255, 255, 255))
+        screen.blit(info_text, (15, 500))
+
+    def handle_event(self, event):
+        if not self.active:
+            return
+        for button in self.buttons:
+            button.handle_event(event)
+            
+        self.back_button.handle_event(event)
+
+        if event.type == pygame.KEYDOWN:
+            self.buy_upgrade_by_key(event.key)
+            if event.key == pygame.K_ESCAPE:
+                self.active = False
+
+    def close_shop(self):
+        self.active = False
+
 class Animations:
     """Will contain basic code for
     flipping 2 images back and forth
@@ -519,7 +582,7 @@ class Inputs:
                     Exiting.quit_game()
 
                 elif self.shop.active:
-                    self.shop.buy_upgrade(event.key)
+                    self.shop.buy_upgrade_by_key(event.key)
 
 screen = pygame.display.set_mode((Info.screenX, Info.screenY))
 
@@ -536,12 +599,16 @@ animated = Animations(player, info)
 move = Movement(enemy, player, info)
 shop = Shop(player, info)
 inputs = Inputs(player, shop, info)
+button = Button(172, 71)
 
 while True:
     events = pygame.event.get()
     for e in events:
         if e.type == pygame.QUIT:
             Exiting.quit_game()
+        
+        if shop.active:
+            shop.handle_event(e)
 
     inputs.keyboard_inputs(events)
 
@@ -552,12 +619,11 @@ while True:
 
     if info.game_state == "Paused":
         info.pause_screen("Q to Quit, S to Shop or C to Continue (Paused)")
-        shop.player_shop(screen)
+        shop.draw(screen)
 
     elif info.game_state == "WaveCleared":
         info.pause_screen("Q to Quit, S to Shop or C to Continue (Wave Cleared)")
-        shop.player_shop(screen)
-
+        shop.draw(screen)
     elif info.game_state == "Playing":
 
         player.player_movement()
@@ -580,7 +646,7 @@ while True:
             info.game_state = "WaveCleared"
 
     if shop.active:
-        shop.player_shop(screen)
+        shop.draw(screen)
 
     animated.screen_text(screen)
     pygame.display.flip()
