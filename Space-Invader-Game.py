@@ -19,10 +19,13 @@ class Assets:
     player_image = pygame.image.load('si_game_assets/images/ship.png')
     enemy_image_basic = pygame.image.load('si_game_assets/images/alien_basic.png')
     enemy_image_guardian = pygame.image.load('si_game_assets/images/alien_guardian.png')
+
     background_image = pygame.image.load('si_game_assets/images/shop_background.png')
 
     buy_button_image = pygame.image.load('si_game_assets/images/buy_button.png')
     close_button_image = pygame.image.load('si_game_assets/images/close_button.png')
+
+    side_cannon_image = pygame.image.load('si_game_assets/images/side_cannon.png')
 
     # Audio effects
     starter_sound = pygame.mixer.Sound('si_game_assets/audio/starter_weapon.mp3')
@@ -108,6 +111,8 @@ class Player:
         self.player_box = pygame.Rect(self.playerX, self.playerY, Info.iconX, Info.iconY)
         
         self.triple_shot_unlocked = False
+        self.side_cannon_count = 0 
+        self.side_cannon_max = 2
         self.shield = 0
         self.shield_max = 3
 
@@ -159,6 +164,8 @@ class Player:
             self.playerY -= self.speed * info.dt * 60
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
             self.playerY += self.speed * info.dt * 60 
+        if keys[pygame.K_l]:
+            self.credits += 5000
 
     def update_position(self):
         self.playerX = max(0, min(self.playerX, Info.screenX - Info.iconX))
@@ -206,15 +213,21 @@ class Upgrades:
     "speed": {
         "cost": 500,
         "effect": lambda player: setattr(player, "speed", player.speed * 2),
-        "repeatable": False,   
-        "purchased": False     
+        "times_purchased": 0,
+        "max_purchases": 1    
     },
     "triple shot": {
         "cost": 800,
         "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
-        "repeatable": False,
-        "purchased": False
-    }
+        "times_purchased": 0,
+        "max_purchases": 1
+    },
+    "side cannon": {
+        "cost": 1000,
+        "effect": lambda player: setattr(player, "side_cannon_count", min(player.side_cannon_count + 1, player.side_cannon_max)),
+        "times_purchased": 0,
+        "max_purchases": 2
+    },
 }
 
 class Enemy:
@@ -321,6 +334,7 @@ class Weapons:
         self.bullet_cooldown = 200
 
     def weapon_mechanic(self):
+
         if self.player.triple_shot_unlocked:
         # Fire 3 bullets: center, left, right
             Assets.triple_sound.set_volume(0.5)
@@ -335,11 +349,24 @@ class Weapons:
             Assets.starter_sound.set_volume(0.5)
             Assets.starter_sound.play()
             bullet = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
-            self.player.bullets.append(bullet)
+            self.player.bullets.append(bullet)        
+
+        if self.player.side_cannon_count >= 1:
+            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.play()
+            left_bullet = pygame.Rect(self.player.player_box.centerx - 77, self.player.player_box.top - 10, 4, 10)
+            self.player.bullets.append(left_bullet)
+
+        if self.player.side_cannon_count >= 2:
+            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.play()
+            right_bullet = pygame.Rect(self.player.player_box.centerx + 77, self.player.player_box.top - 10, 4, 10)
+            self.player.bullets.append(right_bullet)
 
     def shooting_function(self):
         keys = pygame.key.get_pressed()
         now = pygame.time.get_ticks()
+
         if keys[pygame.K_SPACE] and (now - self.last_shot_time) >= self.bullet_cooldown:
             self.last_shot_time = now
             self.weapon_mechanic()
@@ -381,10 +408,10 @@ class Movement:
                     if self.player.shield == 0:
                         Assets.shield_failed_sound.set_volume(0.1)
                         Assets.shield_failed_sound.play()
-
                 else:
                     self.player.player_lives -= 1
                     self.info.show_message("Ouch! Lost a Life", duration=150)
+
                 if alien in self.enemy.aliens:
                     self.enemy.aliens.remove(alien)
                     
@@ -424,14 +451,15 @@ class Shop:
         self.active = False
         self.key_map = {
             pygame.K_1: "speed",
-            pygame.K_2: "triple shot"
+            pygame.K_2: "triple shot",
+            pygame.K_3: "side cannon"
         }
         
         self.buttons = []
         y_offset = 200
         for key, upgrade_name in self.key_map.items():
                 upgrade_info = Upgrades.upgrades[upgrade_name]
-                button_text = f"[{pygame.key.name(key).upper()}] {upgrade_name} ({upgrade_info['cost']} Credits)"
+                button_text = f"[{pygame.key.name(key).upper()}] {upgrade_name} ({upgrade_info['cost']} cr, {upgrade_info['times_purchased']}/{upgrade_info['max_purchases']})"
                 self.buttons.append(
                     Button(
                         x=Info.screenX // 2 - 150,
@@ -459,16 +487,25 @@ class Shop:
 
     def buy_upgrade_by_name(self, upgrade_name):
         upgrade = Upgrades.upgrades[upgrade_name]
-        # Check if already bought and non-repeatable
-        if not upgrade.get("repeatable", False) and upgrade.get("purchased", False):
-            self.info.show_message(f"{upgrade_name} already purchased!", duration=1000)
+
+        if upgrade["times_purchased"] >= upgrade["max_purchases"]:
+            self.info.show_message(f"{upgrade_name} already maxed out!", duration=1000)
             return
+
         if self.player.credits >= upgrade["cost"]:
             self.player.credits -= upgrade["cost"]
+
             upgrade["effect"](self.player)
-            if not upgrade.get("repeatable", False):
-                upgrade["purchased"] = True
-            self.info.show_message(f"{upgrade_name} purchased successfully! Current credits: {self.player.credits}", duration=1000)
+            upgrade["times_purchased"] += 1
+
+            remaining = upgrade["max_purchases"] - upgrade["times_purchased"]
+            if remaining > 0:
+                self.info.show_message(
+                    f"{upgrade_name} purchased! ({remaining} remaining). Credits: {self.player.credits}",
+                    duration=1000
+                )
+            else:
+                self.info.show_message(f"{upgrade_name} fully upgraded!", duration=1000)
         else:
             self.info.show_message("Not enough credits!", duration=1000)
         
@@ -571,6 +608,18 @@ class Animations:
             self.heart_frame = (self.heart_frame + 1) % len(Assets.hearts_image)
         for i in range(self.player.player_lives):
             screen.blit(Assets.hearts_image[self.heart_frame], (10 + i * 40, 40))
+
+    def side_cannon(self, screen):
+        if self.player.side_cannon_count >= 1:
+            screen.blit(
+                Assets.side_cannon_image,
+                (self.player.player_box.centerx - 93, self.player.player_box.top - 10)
+            )
+        if self.player.side_cannon_count >= 2:
+            screen.blit(
+                Assets.side_cannon_image,
+                (self.player.player_box.centerx + 70, self.player.player_box.top - 10)
+            )
 
     def draw_shields(self, screen):
         """Draws 1-3 visual blue rings 
@@ -679,6 +728,7 @@ while True:
         player.player_movement()
         player.update_position()
         player.draw_player(screen)
+        animated.side_cannon(screen)
 
         enemy.alien_movement(screen)
         move.collision_check()
