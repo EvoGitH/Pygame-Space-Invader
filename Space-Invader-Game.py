@@ -1,11 +1,6 @@
 
 import pygame, random, math, sys
 
-# Self reminder that __init__ creates literal instances of what ever you deem necessary
-# you don't have to create multiple player or enemy profiles, 
-# # just having that one class and calling it with __init__ will allow for
-# multiple instances, I FINALLY GET IT!
-
 pygame.init()
 pygame.mixer.init()
 
@@ -22,8 +17,10 @@ class Assets:
     # Images
     game_icon = pygame.image.load('si_game_assets/images/ship.png')
     player_image = pygame.image.load('si_game_assets/images/ship.png')
-    enemy_image = pygame.image.load('si_game_assets/images/alien_basic.png')
+    enemy_image_basic = pygame.image.load('si_game_assets/images/alien_basic.png')
+    enemy_image_guardian = pygame.image.load('si_game_assets/images/alien_guardian.png')
     background_image = pygame.image.load('si_game_assets/images/shop_background.png')
+
     buy_button_image = pygame.image.load('si_game_assets/images/buy_button.png')
     close_button_image = pygame.image.load('si_game_assets/images/close_button.png')
 
@@ -51,8 +48,12 @@ class Assets:
         Assets.shield_coin_image = [
             pygame.image.load('si_game_assets/animated_images/shield_coin1.png').convert_alpha(),
             pygame.image.load('si_game_assets/animated_images/shield_coin2.png').convert_alpha()
-        ]
-    
+            ]
+        Assets.health_coin_image = [
+            pygame.image.load('si_game_assets/animated_images/health_coin1.png').convert_alpha(),
+            pygame.image.load('si_game_assets/animated_images/health_coin2.png').convert_alpha()
+            ]
+        
 class Info:
     """ Will hold only basic
     information that is reuseable 
@@ -65,10 +66,14 @@ class Info:
 
     def __init__(self):
         self.clock = pygame.time.Clock()
-        self.ticks = pygame.time.get_ticks()
-        self.dt = self.clock.tick(60) / 1000 # dt = Delta Time
+        self.ticks = 0
+        self.dt = 0
         self.game_state = "Paused"
         self.level = 1
+    
+    def update_time(self):
+        self.dt = self.clock.tick(60) / 1000
+        self.ticks = pygame.time.get_ticks()
 
     def show_message(self, text, duration=1000):
         font = pygame.font.Font(None, 50)
@@ -99,30 +104,51 @@ class Player:
         self.points = 0
 
         self.playerX = Info.screenX / 2
-        self.playerY = Info.screenY
+        self.playerY = Info.screenY - Info.iconY - 10
         self.player_box = pygame.Rect(self.playerX, self.playerY, Info.iconX, Info.iconY)
         
         self.triple_shot_unlocked = False
-
         self.shield = 0
         self.shield_max = 3
-        self.shield_duration = 0
-        self.shield_coin_active = False
 
         self.shield_coin_rect = Assets.shield_coin_image[0].get_rect(
             topleft=(random.randint(50, Info.screenX - 50), 
                      random.randint(Info.screenY // 2, Info.screenY - 50))
                      )
-        self.coin_collected = False
-        self.coin_frame = 0
-        self.coin_timer = 0
-        self.coin_effect_timer = 0
-        self.coin_speed = 250   
-        self.coin_duration = 5000
-        self.coin_respawn_delay = 5000
-        self.coin_respawn_timer = 0
-        self.float_amplitude = 5
-    
+        
+        self.health_coin_rect = Assets.health_coin_image[0].get_rect(
+            topleft=(random.randint(50, Info.screenX - 50), 
+                     random.randint(Info.screenY // 2, Info.screenY - 50))
+                     )
+        
+        # Dict for coin collect, modular
+        self.collectibles = [
+            Collectible(
+                "shield_coin",
+                Assets.shield_coin_image,
+                Assets.shield_coin_image[0].get_rect(
+                    topleft=(
+                        random.randint(50, Info.screenX - 50),
+                        random.randint(Info.screenY // 2, Info.screenY - 50)
+                    )
+                ),
+                speed=250,
+                amplitude=5
+            ),
+            Collectible(
+                "health_coin",
+                Assets.health_coin_image,
+                Assets.health_coin_image[0].get_rect(
+                    topleft=(
+                        random.randint(50, Info.screenX - 50),
+                        random.randint(Info.screenY // 2, Info.screenY - 50)
+                    )
+                ),
+                speed=250,
+                amplitude=5
+            )
+        ]
+
     def player_movement(self):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -206,8 +232,6 @@ class Enemy:
         self.alien_drop_amount = 60
         self.vertical_padding = 50
 
-
-    
     def spawn_aliens(self, level):
         self.player.bullets = []
         self.aliens = []
@@ -215,8 +239,8 @@ class Enemy:
 
         self.rows = min(5, 0 + self.info.level)
         self.columns = min(10,10 + self.info.level)
-        self.alien_width = Assets.enemy_image.get_width()
-        self.alien_height = Assets.enemy_image.get_height()
+        self.alien_width = Assets.enemy_image_basic.get_width()
+        self.alien_height = Assets.enemy_image_basic.get_height()
         self.total_width = self.columns * self.alien_width + (self.columns - 1) * 20
         self.start_x = (self.info.screenX - self.total_width) // 2
         self.start_y = self.vertical_padding
@@ -225,7 +249,7 @@ class Enemy:
             for col in range(self.columns):
                 x = self.start_x + col * (self.alien_width + 20)
                 y = self.start_y + row * (self.alien_height + 20)
-                alien_rect = Assets.enemy_image.get_rect(topleft=(x, y))
+                alien_rect = Assets.enemy_image_basic.get_rect(topleft=(x, y))
                 self.aliens.append({
                     "rect": alien_rect,
                     "just_spawned": True,
@@ -235,7 +259,6 @@ class Enemy:
                 })
         self.alien_speed = 5 + (level * 0.3)
 
-    
     def alien_movement(self, screen):
         hit_edge = False
         edge_buffer = 5
@@ -282,12 +305,11 @@ class Enemy:
                 alien["just_spawned"] = False
 
         for alien in self.aliens:
-            screen.blit(Assets.enemy_image, alien["rect"])
+            screen.blit(Assets.enemy_image_basic, alien["rect"])
 
 class Weapons:
     """ Mechanics and the
      visuals of game weapons """
-
 
     def __init__(self, player, enemy, info):
         self.player = player
@@ -340,7 +362,6 @@ class Weapons:
                         self.player.credits += 100
                     break
 
-    
 class Movement:
     """ Contains collision checks between
     enemies and player, but also updates to
@@ -352,7 +373,7 @@ class Movement:
         self.info = info
 
     def collision_check(self):
-        for alien in enemy.aliens[:]:
+        for alien in self.enemy.aliens[:]:
             if self.player.player_box.colliderect(alien["rect"]):
                 if self.player.shield > 0:
                     self.player.shield -= 1
@@ -371,31 +392,22 @@ class Movement:
                     Exiting.quit_game()
 
     def coin_collision(self):
-        
-        if self.player.player_box.colliderect(self.player.shield_coin_rect) and not self.player.shield_coin_active:
-            self.player.shield += 1
-            self.player.coin_collected = True
-            self.player.shield_coin_active = True
-            self.player.coin_effect_timer = 0
-            Assets.shield_sound.set_volume(0.3)
-            Assets.shield_sound.play()
+        for collectible in self.player.collectibles:
+            if collectible.collected:
+                continue
 
-        if self.player.shield_coin_active:
-            self.player.coin_effect_timer += info.dt * 1000
-            effect_duration = 15000
-            if self.player.coin_effect_timer >= effect_duration:
-                self.player.shield_coin_active = False
-                self.player.shield -= 1
+            if self.player.player_box.colliderect(collectible.rect):
+                collectible.collected = True
 
-        if self.player.coin_collected and not self.player.shield_coin_active:
-            self.player.coin_respawn_timer += info.dt * 1000
-            if self.player.coin_respawn_timer >= self.player.coin_respawn_delay:
-                self.player.shield_coin_rect.topleft = (
-                    random.randint(50, Info.screenX -50), 
-                    random.randint(Info.screenY // 2, Info.screenY - 50)
-                    )
-                self.player.coin_collected = False
-                self.player.coin_respawn_timer = 0
+                if collectible.name == "shield_coin":
+                    self.player.shield = min(self.player.shield + 1, self.player.shield_max)
+                    Assets.shield_sound.set_volume(0.3)
+                    Assets.shield_sound.play()
+
+                elif collectible.name == "health_coin":
+                    self.player.player_lives = min(self.player.player_lives + 1, 4)
+
+                pygame.time.set_timer(pygame.USEREVENT + 1, 5000, loops=1)
   
 class Shop:
     """Player Shop
@@ -497,6 +509,48 @@ class Shop:
     def close_shop(self):
         self.active = False
 
+class Collectible:
+    """Handles individual collectible animation and drawing."""
+
+    def __init__(self, name, images, rect, speed=150, amplitude=5):
+        self.name = name
+        self.images = images
+        self.rect = rect
+        self.collected = False
+        self.frame = 0
+        self.timer = 0
+        self.speed = speed
+        self.amplitude = amplitude
+        self.respawn_timer = 0
+
+    def update(self, dt):
+        """Updates animation and respawn timers."""
+
+        if self.collected:
+            self.respawn_timer += dt * 1000
+            if self.respawn_timer >= 5000:
+                self.rect.topleft = (
+                    random.randint(50, Info.screenX - 50),
+                    random.randint(Info.screenY // 2, Info.screenY - 50)
+                )
+                self.collected = False
+                self.respawn_timer = 0
+        else:
+            self.timer += dt * 1000
+            if self.timer >= self.speed:
+                self.timer = 0
+                self.frame = (self.frame + 1) % len(self.images)
+
+    def draw(self, screen):
+        """Draw the collectible on screen with floating effect."""
+
+        if self.collected:
+            return
+        float_offset = math.sin(pygame.time.get_ticks() * 0.005) * self.amplitude
+        draw_rect = self.images[self.frame].get_rect(center=self.rect.center)
+        draw_rect.y += float_offset
+        screen.blit(self.images[self.frame], draw_rect)
+
 class Animations:
     """Will contain basic code for
     flipping 2 images back and forth
@@ -530,23 +584,10 @@ class Animations:
             pygame.draw.circle(shield_surface, (0, 0, 255, 100), (radius, radius), radius, 4)  # 4px thick ring
             screen.blit(shield_surface, (self.player.playerX - radius + self.info.iconX/2, self.player.playerY - radius + self.info.iconY/2))
 
-    def floating_coin(self, screen):   
-
-        if not self.player.coin_collected:
-            shield_image = Assets.shield_coin_image[self.player.coin_frame]
-
-            # Switches between two images, creating a *Flash* effect.
-            self.player.coin_timer += self.info.dt * 1000
-            if self.player.coin_timer >= self.player.coin_speed:
-                self.player.coin_timer = 0
-                self.player.coin_frame = (self.player.coin_frame + 1) % len(Assets.shield_coin_image)
-            
-            # Floating animation
-            float_offset = math.sin(pygame.time.get_ticks() * 0.005) * self.player.float_amplitude
-            draw_rect = shield_image.get_rect(center=self.player.shield_coin_rect.center) 
-            draw_rect.y += float_offset
-    
-            screen.blit(shield_image, draw_rect)
+    def floating_collectibles(self, screen):
+        for collectible in self.player.collectibles:
+            collectible.update(self.info.dt)
+            collectible.draw(screen)
 
     def screen_text(self, screen):
         font = pygame.font.Font(None, 35)
@@ -616,18 +657,14 @@ inputs = Inputs(player, shop, info, enemy)
 
 while True:
     events = pygame.event.get()
-    for e in events:
-        if e.type == pygame.QUIT:
+    for event in events:
+        if event.type == pygame.QUIT:
             Exiting.quit_game()
-        
         if shop.active:
-            shop.handle_event(e)
+            shop.handle_event(event)
+        inputs.keyboard_inputs([event])
 
-    inputs.keyboard_inputs(events)
-
-    info.dt = info.clock.tick(60) / 1000
-    info.clock_ticks = pygame.time.get_ticks()
-
+    info.update_time()
     screen.fill((0, 0, 0))
 
     if info.game_state == "Paused":
@@ -639,7 +676,6 @@ while True:
         shop.draw(screen)
 
     elif info.game_state == "Playing":
-
         player.player_movement()
         player.update_position()
         player.draw_player(screen)
@@ -648,18 +684,32 @@ while True:
         move.collision_check()
         move.coin_collision()
 
-        animated.heart_animation(screen)
-        animated.floating_coin(screen)
-        animated.draw_shields(screen)
-
         weapon.shooting_function()
         weapon.update_bullets(screen)
 
         if len(enemy.aliens) == 0:
             info.game_state = "WaveCleared"
 
+    for event in events:
+        if event.type == pygame.USEREVENT + 1:
+            if info.game_state == "Playing":
+                for collectible in player.collectibles:
+                    if collectible.collected:
+                        collectible.rect.topleft = (
+                            random.randint(50, Info.screenX - 50),
+                            random.randint(Info.screenY // 2, Info.screenY - 50)
+                        )
+                        collectible.collected = False
+
+    animated.heart_animation(screen)
+    animated.floating_collectibles(screen)
+
+    if info.game_state == "Playing":
+        animated.draw_shields(screen)
+
+    animated.screen_text(screen)
+
     if shop.active:
         shop.draw(screen)
 
-    animated.screen_text(screen)
     pygame.display.flip()
