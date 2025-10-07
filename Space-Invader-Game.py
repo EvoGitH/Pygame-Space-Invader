@@ -19,6 +19,8 @@ class Assets:
     player_image = pygame.image.load('si_game_assets/images/ship.png')
     enemy_image_basic = pygame.image.load('si_game_assets/images/alien_basic.png')
     enemy_image_guardian = pygame.image.load('si_game_assets/images/alien_guardian.png')
+    enemy_image_zigzag = pygame.image.load('si_game_assets/images/alien_zigzag.png')
+    enemy_image_tank = pygame.image.load('si_game_assets/images/alien_tank.png')
 
     background_image = pygame.image.load('si_game_assets/images/shop_background.png')
 
@@ -62,8 +64,8 @@ class Info:
     information that is reuseable 
     but mutable for the game here"""
 
-    screenX = 1080
-    screenY = 720
+    screenX = 1920
+    screenY = 1080
     iconX = 64
     iconY = 64
 
@@ -71,7 +73,7 @@ class Info:
         self.clock = pygame.time.Clock()
         self.ticks = 0
         self.dt = 0
-        self.game_state = "Paused"
+        self.game_state = "Playing"
         self.level = 1
     
     def update_time(self):
@@ -210,19 +212,19 @@ class Upgrades:
     """
 
     upgrades = {
-    "speed": {
+    "Speed": {
         "cost": 500,
-        "effect": lambda player: setattr(player, "speed", player.speed * 2),
+        "effect": lambda player: setattr(player, "speed", player.speed + 1),
         "times_purchased": 0,
-        "max_purchases": 1    
+        "max_purchases": 5    
     },
-    "triple shot": {
+    "Triple Shot": {
         "cost": 800,
         "effect": lambda player: setattr(player, "triple_shot_unlocked", True),
         "times_purchased": 0,
         "max_purchases": 1
     },
-    "side cannon": {
+    "Side Cannon": {
         "cost": 1000,
         "effect": lambda player: setattr(player, "side_cannon_count", min(player.side_cannon_count + 1, player.side_cannon_max)),
         "times_purchased": 0,
@@ -230,95 +232,182 @@ class Upgrades:
     },
 }
 
-class Enemy:
-    """ Will contain everything
-    about the Alien enemy and its
-    basic movement script """
+class BaseEnemy:
+    """Base class for all enemies. 
+    New enemy types inherit from this."""
 
+    def __init__(self, player, info, level):
+        self.image = Assets.enemy_image_basic
+        self.lives = 1
+        self.speed = 3 + level * 0.1
+        self.player = player
+        self.info = info
+        self.rect = self.image.get_rect(topleft=(0, 0))
+        self.independent = False
+        self.x_speed = 0
+        self.y_speed = 0
+        self.just_spawned = True
+        self.points = 100
+        self.credits = 100
+        self.direction = 1
+        self.drop_amount = 60
+        self.bullets = []
+        self.shoot_cooldown = 1500
+        self.last_shot_time = 0
+
+    def spawn(self, x, y):
+        self.rect.topleft = (x, y)
+
+    def update(self, dt):
+        """Default movement: 
+        horizontal bouncing and edge drop."""
+
+        if not self.independent:
+            self.rect.x += self.speed * dt * 60 * self.direction
+            if self.rect.left < 5:
+                self.rect.left = 5
+                self.direction *= -1
+                self.rect.y += self.drop_amount
+            elif self.rect.right > self.info.screenX - 5:
+                self.rect.right = self.info.screenX - 5
+                self.direction *= -1
+                self.rect.y += self.drop_amount
+                
+            # Possibly become independent if reaches player
+            if self.rect.top > self.player.playerY:
+                self.independent = True
+                self.x_speed = random.choice([-2, -1, 1, 2])
+                self.y_speed = random.randint(1, 3)
+        else:
+            self.rect.x += self.x_speed
+            self.rect.y += self.y_speed
+            if self.rect.left < 0 or self.rect.right > self.info.screenX:
+                self.x_speed *= -1
+            if self.rect.bottom >= self.info.screenY:
+                self.independent = False
+                self.x_speed = 0
+                self.y_speed = 0
+                self.rect.y = 0
+
+        if self.info.level >= 30:
+            self.shoot()
+
+        for bullet in self.bullets[:]:
+            bullet.y += 5 * self.info.dt * 60  
+            if bullet.top > self.info.screenY:
+                self.bullets.remove(bullet)
+
+    def shoot(self):
+        now = pygame.time.get_ticks()
+        if now - self.last_shot_time >= self.shoot_cooldown:
+            self.last_shot_time = now
+            bullet = pygame.Rect(
+                self.rect.centerx - 3,
+                self.rect.bottom,
+                6,
+                10
+            )
+            self.bullets.append(bullet)
+
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+
+class TankEnemy(BaseEnemy):
+    """Slow but tough enemy."""
+
+    def __init__(self, player, info, level):
+        super().__init__(player, info, level)
+        self.image = Assets.enemy_image_tank
+        self.lives = 4
+        self.speed = 2 
+        self.points = 300
+        self.credits = 250
+
+class ZigzagEnemy(BaseEnemy):
+    """Enemy with sine-wave horizontal movement."""
+
+    def __init__(self, player, info, level):
+        super().__init__(player, info, level)
+        self.image = Assets.enemy_image_zigzag
+        self.lives = 2
+        self.speed = 4 + level * 0.1
+        self.points = 200
+        self.credits = 150
+        self.start_x = 0
+        self.amplitude = 100
+        self.frequency = 2
+        self.time = 0
+
+    def spawn(self, x, y):
+        super().spawn(x, y)
+        self.start_x = x
+
+    def update(self, dt):
+        self.time += dt
+        self.rect.y += self.speed * dt * 60
+        self.rect.x = self.start_x + math.sin(self.time * self.frequency) * self.amplitude
+        # Respawn at top if offscreen
+        if self.rect.top > self.info.screenY:
+            self.rect.y = -self.rect.height
+            self.start_x = random.randint(50, self.info.screenX - 50)
+
+class EnemyManager:
+    """Handles all enemies, spawning by level, modular system."""
     def __init__(self, player, info):
         self.player = player
         self.info = info
+        self.enemies = []
+        self.level_enemy_map = {
+            1: [BaseEnemy],        # Level 1-9
+            10: [TankEnemy],       # Level 10-14
+            15: [ZigzagEnemy],     # Level 15+
+            # Future levels can add more types
+        }
+        self.enemy_speed = 5
+        self.direction = 1
+        self.drop_amount = 60
 
-        self.aliens = []
-        self.alien_direction = 1
-        self.alien_speed = 5
-        self.alien_drop_amount = 60
-        self.vertical_padding = 50
+    def get_available_enemy_types(self):
+        """Return list of enemy classes based on current level."""
 
-    def spawn_aliens(self, level):
-        self.player.bullets = []
-        self.aliens = []
-        self.info.game_state = "Playing"
+        types = []
+        for lvl in sorted(self.level_enemy_map.keys()):
+            if self.info.level >= lvl:
+                types.extend(self.level_enemy_map[lvl])
+        return types
 
-        self.rows = min(5, 0 + self.info.level)
-        self.columns = min(10,10 + self.info.level)
-        self.alien_width = Assets.enemy_image_basic.get_width()
-        self.alien_height = Assets.enemy_image_basic.get_height()
-        self.total_width = self.columns * self.alien_width + (self.columns - 1) * 20
-        self.start_x = (self.info.screenX - self.total_width) // 2
-        self.start_y = self.vertical_padding
+    def spawn_enemies(self, rows=3, columns=8):
+        """Spawn a grid of enemies with modular types."""
 
-        for row in range(self.rows):
-            for col in range(self.columns):
-                x = self.start_x + col * (self.alien_width + 20)
-                y = self.start_y + row * (self.alien_height + 20)
-                alien_rect = Assets.enemy_image_basic.get_rect(topleft=(x, y))
-                self.aliens.append({
-                    "rect": alien_rect,
-                    "just_spawned": True,
-                    "independent": False,
-                    "x_speed": 0,
-                    "y_speed": 0
-                })
-        self.alien_speed = 5 + (level * 0.3)
+        self.enemies.clear()
+        available_types = self.get_available_enemy_types()
 
-    def alien_movement(self, screen):
-        hit_edge = False
-        edge_buffer = 5
+        enemy_width = Assets.enemy_image_basic.get_width()
+        enemy_height = Assets.enemy_image_basic.get_height()
+        total_width = columns * enemy_width + (columns - 1) * 20
+        start_x = (self.info.screenX - total_width) // 2
+        start_y = 50
 
-        for alien in self.aliens:
-            rect = alien["rect"]
+        for row in range(rows):
+            for col in range(columns):
+                EnemyClass = random.choice(available_types)
+                enemy = EnemyClass(self.player, self.info, self.info.level)
 
-            if not alien["independent"]:  
-                rect.x += self.alien_speed * self.alien_direction * self.info.dt * 60
+                if enemy.lives <= 0:
+                    continue
 
-                if rect.left < edge_buffer:
-                    rect.left = edge_buffer
-                    hit_edge = True
-                elif rect.right > self.info.screenX - edge_buffer:
-                    rect.right = self.info.screenX - edge_buffer
-                    hit_edge = True
+                x = start_x + col * (enemy_width + 20)
+                y = start_y + row * (enemy_height + 20)
+                enemy.spawn(x, y)
+                self.enemies.append(enemy)
 
-                if rect.top > self.player.playerY:
-                    alien["independent"] = True
-                    alien["x_speed"] = random.choice([-2, -1, 1, 2])
-                    alien["y_speed"] = random.randint(1, 3)
+    def update_and_draw(self, screen, dt):
 
-            else:
-                rect.x += alien["x_speed"]
-                rect.y += alien["y_speed"]
-
-                if rect.left < 0 or rect.right > self.info.screenX:
-                    alien["x_speed"] *= -1
-
-                if rect.bottom >= self.info.screenY:
-                    alien["independent"] = False
-                    alien["x_speed"] = 0
-                    alien["y_speed"] = 0
-                    rect.y = 0
-
-        if hit_edge:
-            self.alien_direction *= -1
-            for alien in self.aliens:
-                if not alien["independent"]:
-                    alien["rect"].y += self.alien_drop_amount
-
-        for alien in self.aliens:
-            if alien["just_spawned"] and alien["rect"].top > 50:
-                alien["just_spawned"] = False
-
-        for alien in self.aliens:
-            screen.blit(Assets.enemy_image_basic, alien["rect"])
+        for enemy in self.enemies[:]:
+            enemy.update(dt)
+            enemy.draw(screen)
+            for bullet in enemy.bullets[:]:
+                pygame.draw.rect(screen, (255, 0, 0), bullet)
 
 class Weapons:
     """ Mechanics and the
@@ -346,19 +435,19 @@ class Weapons:
             self.player.bullets.extend([bullet1, bullet2, bullet3])
         else:
         # Single bullet, basic beginner.
-            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.set_volume(0.3)
             Assets.starter_sound.play()
             bullet = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
             self.player.bullets.append(bullet)        
 
         if self.player.side_cannon_count >= 1:
-            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.set_volume(0.2)
             Assets.starter_sound.play()
             left_bullet = pygame.Rect(self.player.player_box.centerx - 77, self.player.player_box.top - 10, 4, 10)
             self.player.bullets.append(left_bullet)
 
         if self.player.side_cannon_count >= 2:
-            Assets.starter_sound.set_volume(0.5)
+            Assets.starter_sound.set_volume(0.2)
             Assets.starter_sound.play()
             right_bullet = pygame.Rect(self.player.player_box.centerx + 77, self.player.player_box.top - 10, 4, 10)
             self.player.bullets.append(right_bullet)
@@ -379,14 +468,17 @@ class Weapons:
             if bullet.bottom < 0:
                 self.player.bullets.remove(bullet)
                 continue
-        
-            for alien in self.enemy.aliens[:]:
-                if bullet.colliderect(alien["rect"]):
-                    self.enemy.aliens.remove(alien)
+
+            for enemy in self.enemy.enemies[:]: 
+                if bullet.colliderect(enemy.rect):
+                    enemy.lives -= 1
+                    if enemy.lives <= 0:
+                        self.enemy.enemies.remove(enemy) 
+                        self.player.points += enemy.points 
+                        self.player.credits += enemy.credits  
+
                     if bullet in self.player.bullets:
                         self.player.bullets.remove(bullet)
-                        self.player.points += 100
-                        self.player.credits += 100
                     break
 
 class Movement:
@@ -400,23 +492,40 @@ class Movement:
         self.info = info
 
     def collision_check(self):
-        for alien in self.enemy.aliens[:]:
-            if self.player.player_box.colliderect(alien["rect"]):
+        for alien in self.enemy.enemies[:]:
+            if self.player.player_box.colliderect(alien.rect):
                 if self.player.shield > 0:
                     self.player.shield -= 1
-                    self.info.show_message("Shield absorbed the hit!", duration=150)
+                    self.info.show_message("Shield absorbed the hit!", duration=100)
                     if self.player.shield == 0:
                         Assets.shield_failed_sound.set_volume(0.1)
                         Assets.shield_failed_sound.play()
                 else:
                     self.player.player_lives -= 1
-                    self.info.show_message("Ouch! Lost a Life", duration=150)
+                    self.info.show_message("Ouch! Lost a Life", duration=100)
 
-                if alien in self.enemy.aliens:
-                    self.enemy.aliens.remove(alien)
+                if alien in self.enemy.enemies:
+                    self.enemy.enemies.remove(alien)
                     
                 if self.player.player_lives == 0:
                     Exiting.quit_game()
+        
+        for enemy in self.enemy.enemies:
+            for bullet in enemy.bullets[:]:
+                if self.player.player_box.colliderect(bullet):
+                    if self.player.shield > 0:
+                        self.player.shield -= 1
+                        self.info.show_message("Shield absorbed the hit!", duration=100)
+                        Assets.shield_failed_sound.set_volume(0.1)
+                        Assets.shield_failed_sound.play()
+                    else:
+                        self.player.player_lives -= 1
+                        self.info.show_message("Ouch! Lost a Life", duration=100)
+                    enemy.bullets.remove(bullet)
+
+                    if self.player.player_lives == 0:
+                        Exiting.quit_game()
+
 
     def coin_collision(self):
         for collectible in self.player.collectibles:
@@ -450,21 +559,21 @@ class Shop:
         self.info = info
         self.active = False
         self.key_map = {
-            pygame.K_1: "speed",
-            pygame.K_2: "triple shot",
-            pygame.K_3: "side cannon"
+            pygame.K_1: "Speed",
+            pygame.K_2: "Triple Shot",
+            pygame.K_3: "Side Cannon"
         }
         
         self.buttons = []
         y_offset = 200
         for key, upgrade_name in self.key_map.items():
                 upgrade_info = Upgrades.upgrades[upgrade_name]
-                button_text = f"[{pygame.key.name(key).upper()}] {upgrade_name} ({upgrade_info['cost']} cr, {upgrade_info['times_purchased']}/{upgrade_info['max_purchases']})"
+                button_text = f"[{pygame.key.name(key).upper()}] {upgrade_name} ({upgrade_info['cost']}, Max: {upgrade_info['max_purchases']})"
                 self.buttons.append(
                     Button(
                         x=Info.screenX // 2 - 150,
                         y=y_offset,
-                        width=300,
+                        width=400,
                         height=71,
                         text=button_text,
                         color=(0,128,255),
@@ -642,7 +751,14 @@ class Animations:
         font = pygame.font.Font(None, 35)
 
         points_text = font.render(f"Score: {self.player.points}", True, (255, 255, 255))
-        screen.blit(points_text, (15, 10))
+        points_rect = points_text.get_rect()
+        points_rect.topleft = (35, 10)
+        screen.blit(points_text, points_rect)
+
+        level_text = font.render(f"Level: {self.info.level}", True, (255, 255, 255))
+        level_rect = level_text.get_rect()
+        level_rect.topright = (self.info.screenX - 35, 10)
+        screen.blit(level_text, level_rect)
 
 class Inputs:
     """Keyboard inputs will effect
@@ -672,14 +788,20 @@ class Inputs:
                 elif event.key == pygame.K_s and (info.game_state in ["Paused", "WaveCleared"]):
                     self.shop.active = True
 
-                elif event.key == pygame.K_c and self.info.game_state == "WaveCleared":
-                    self.info.level += 1
-                    self.enemy.spawn_aliens(self.info.level)
+                elif event.key == pygame.K_c and self.info.game_state in ["WaveCleared", "Paused"]:
+                    if self.info.game_state == "WaveCleared":
+                        self.info.level += 1
+                        if self.info.level > 25:
+                            self.enemy.spawn_enemies(rows=5, columns=10)
+                        elif self.info.level > 20:
+                            self.enemy.spawn_enemies(rows=4, columns=9)
+                        else:
+                            self.enemy.spawn_enemies(rows=3, columns=8)
+                    self.player.bullets.clear()
 
                     self.player.playerX = Info.screenX / 2
                     self.player.playerY = Info.screenY
                     self.player.update_position()
-
                     self.info.game_state = "Playing"
 
                 elif event.key == pygame.K_q and self.info.game_state in ["Paused", "WaveCleared"]:
@@ -696,8 +818,8 @@ Assets.animation_images()
 
 info = Info()
 player = Player()
-enemy = Enemy(player, info)
-enemy.spawn_aliens(info.level)
+enemy = EnemyManager(player, info)
+enemy.spawn_enemies(rows=3, columns=8)
 weapon = Weapons(player, enemy, info)
 animated = Animations(player, info)
 move = Movement(enemy, player, info)
@@ -730,14 +852,14 @@ while True:
         player.draw_player(screen)
         animated.side_cannon(screen)
 
-        enemy.alien_movement(screen)
+        enemy.update_and_draw(screen, info.dt)
         move.collision_check()
         move.coin_collision()
 
         weapon.shooting_function()
         weapon.update_bullets(screen)
 
-        if len(enemy.aliens) == 0:
+        if len(enemy.enemies) == 0:
             info.game_state = "WaveCleared"
 
     for event in events:
