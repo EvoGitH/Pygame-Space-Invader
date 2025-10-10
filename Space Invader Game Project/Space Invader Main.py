@@ -1,6 +1,9 @@
 
 import pygame, random, math, sys
 
+# This is the original full spaghetti code, all 880+ lines of it, took this, broke it down into invidual class modules, and now 
+# I have WAY more files to work with, but code is so much easier to look at, OH MY GOD
+
 pygame.init()
 pygame.mixer.init()
 
@@ -879,3 +882,4 @@ while True:
         shop.draw(screen)
 
     pygame.display.flip()
+
