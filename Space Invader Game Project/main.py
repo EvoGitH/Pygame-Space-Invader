@@ -1,18 +1,18 @@
 import pygame, sys, random
-from settings import Info
+from modules.settings import Info
 
 screen = pygame.display.set_mode((1920, 1080))
 info = Info(screen)
 
-from movement import Movement
-from assets import Assets 
-from enemy import EnemyManager
-from player import Player
-from shop import Shop
-from inputs import Inputs
-from weapons import Weapons
-from animation import Animations
-from asset_animated import animation_images as Assnimated # lol
+from modules.movement import Movement
+from modules.assets import Assets 
+from modules.enemy import EnemyManager
+from modules.player import Player
+from modules.shop import Shop
+from modules.inputs import Inputs
+from modules.weapons import Weapons
+from modules.animation import Animations
+from modules.asset_animated import animation_images as Assnimated # lol
 
 pygame.display.set_caption("Alien Invaders")
 pygame.display.set_icon(Assets.game_icon)
