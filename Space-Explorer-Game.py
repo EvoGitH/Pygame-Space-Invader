@@ -142,6 +142,7 @@ class Assets:
     droid_image = None
     player_size = 40
     portal_size = 80
+    enemy_collision_radius = 15  # Will be set after loading enemy image
 
     @staticmethod
     def load_assets():
@@ -164,8 +165,11 @@ class Assets:
             enemy_size = original_enemy.get_size()
             new_enemy_size = (int(enemy_size[0] * 0.35), int(enemy_size[1] * 0.35))
             Assets.enemy_image = pygame.transform.smoothscale(original_enemy, new_enemy_size)
+            # Calculate collision radius as half of the average dimension
+            Assets.enemy_collision_radius = (new_enemy_size[0] + new_enemy_size[1]) // 4
         except:
             Assets.enemy_image = None
+            Assets.enemy_collision_radius = ENEMY_SIZE  # Fallback to constant
 
         try:
             original_droid = pygame.image.load("si_game_assets/images/side_cannon.png")
@@ -467,7 +471,8 @@ class Enemy:
         self.rotation = random.uniform(0, 360)
         self.rotation_speed = random.uniform(ENEMY_MIN_ROTATION_SPEED, ENEMY_MAX_ROTATION_SPEED)
 
-        self.size = ENEMY_SIZE
+        # Use dynamically calculated collision radius based on actual image size
+        self.size = Assets.enemy_collision_radius
 
         # Health system
         self.max_health = ENEMY_MAX_HEALTH
