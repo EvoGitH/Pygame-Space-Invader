@@ -54,6 +54,27 @@ PORTAL_ROTATION_SPEED = 100
 # Warp Constants
 WARP_SPEED = 1.5
 
+# Progression Constants
+XP_PER_ENEMY_KILL = 100
+BASE_XP_FOR_LEVELUP = 500
+
+# Rank System - 13 Ranks based on level progression
+RANKS = {
+    1: {"name": "Cadet", "color": (150, 150, 150)},
+    2: {"name": "Pilot", "color": (180, 180, 180)},
+    3: {"name": "Veteran Pilot", "color": (100, 200, 100)},
+    4: {"name": "Elite Pilot", "color": (100, 220, 100)},
+    5: {"name": "Squadron Leader", "color": (100, 150, 255)},
+    6: {"name": "Wing Commander", "color": (120, 170, 255)},
+    7: {"name": "Fleet Captain", "color": (150, 100, 255)},
+    8: {"name": "Commodore", "color": (180, 120, 255)},
+    9: {"name": "Admiral", "color": (255, 150, 50)},
+    10: {"name": "Fleet Admiral", "color": (255, 180, 80)},
+    11: {"name": "Grand Admiral", "color": (255, 100, 100)},
+    12: {"name": "Supreme Commander", "color": (255, 50, 50)},
+    13: {"name": "Legend", "color": (255, 215, 0)}  # Gold color
+}
+
 
 def normalize_angle(angle):
     """
@@ -618,6 +639,55 @@ class Player:
         self.shield_pulse_progress = 0.0
         self.shield_rotation = 0.0
 
+        # Progression system
+        self.level = 1
+        self.xp = 0
+        self.xp_for_next_level = BASE_XP_FOR_LEVELUP
+        self.nickname = "Huang"
+        self.total_kills = 0
+
+        # Level up animation
+        self.levelup_animation_timer = 0
+        self.levelup_animation_active = False
+
+    def add_xp(self, amount):
+        """
+        Add experience points and handle level progression.
+
+        Args:
+            amount: XP amount to add
+        """
+        self.xp += amount
+
+        # Check for level up
+        while self.xp >= self.xp_for_next_level:
+            self.xp -= self.xp_for_next_level
+            self.level += 1
+
+            # Cap level at max rank (13)
+            if self.level > 13:
+                self.level = 13
+                self.xp = 0  # Reset XP if at max level
+                break
+
+            # Increase XP requirement for next level
+            self.xp_for_next_level = BASE_XP_FOR_LEVELUP * self.level
+
+            # Trigger level up animation
+            self.levelup_animation_active = True
+            self.levelup_animation_timer = 3.0  # 3 second animation
+
+    def get_rank(self):
+        """
+        Get current rank information based on level.
+
+        Returns:
+            Dictionary containing rank name and color
+        """
+        # Cap rank display at max level
+        rank_level = min(self.level, 13)
+        return RANKS.get(rank_level, RANKS[1])
+
     def find_nearest_enemy(self, enemies):
         """
         Locate the closest enemy for targeting.
@@ -769,6 +839,12 @@ class Player:
             if self.shield_pulse_progress > 1.0:
                 self.shield_pulse_progress = 1.0
 
+        # Update level up animation timer
+        if self.levelup_animation_active:
+            self.levelup_animation_timer -= dt
+            if self.levelup_animation_timer <= 0:
+                self.levelup_animation_active = False
+
     def draw_shield(self, screen):
         """
         Render hexagonal energy shield with animated pulse effect.
@@ -834,9 +910,201 @@ class Player:
         shield_y = self.y - center
         screen.blit(shield_surf, (int(shield_x), int(shield_y)))
 
+    def draw_nameplate(self, screen):
+        """
+        Render player nameplate with nickname, rank badge, and level.
+
+        Displays below the ship showing player identity and progression.
+
+        Args:
+            screen: Pygame display surface
+        """
+        rank_info = self.get_rank()
+        rank_name = rank_info["name"]
+        rank_color = rank_info["color"]
+
+        # Nameplate position (below ship)
+        nameplate_y = self.y + 80
+
+        # Create nameplate surface with transparency
+        nameplate_width = 280
+        nameplate_height = 50
+        nameplate_surf = pygame.Surface((nameplate_width, nameplate_height), pygame.SRCALPHA)
+
+        # Draw background panel with glow
+        bg_alpha = 180
+        pygame.draw.rect(nameplate_surf, (20, 20, 40, bg_alpha),
+                        (0, 0, nameplate_width, nameplate_height), border_radius=8)
+        pygame.draw.rect(nameplate_surf, (*rank_color, 200),
+                        (0, 0, nameplate_width, nameplate_height), 2, border_radius=8)
+
+        # Draw rank badge (left side)
+        badge_x = 10
+        badge_y = nameplate_height // 2
+        badge_radius = 15
+
+        # Badge outer glow
+        for i in range(3, 0, -1):
+            glow_alpha = int(80 / i)
+            pygame.draw.circle(nameplate_surf, (*rank_color, glow_alpha),
+                             (badge_x + badge_radius, badge_y), badge_radius + i * 2)
+
+        # Badge circle
+        pygame.draw.circle(nameplate_surf, rank_color,
+                          (badge_x + badge_radius, badge_y), badge_radius)
+        pygame.draw.circle(nameplate_surf, (255, 255, 255, 200),
+                          (badge_x + badge_radius, badge_y), badge_radius, 2)
+
+        # Draw level number in badge
+        level_font = pygame.font.Font(None, 24)
+        level_text = level_font.render(str(self.level), True, (255, 255, 255))
+        level_rect = level_text.get_rect(center=(badge_x + badge_radius, badge_y))
+        nameplate_surf.blit(level_text, level_rect)
+
+        # Draw nickname (center-top)
+        nickname_font = pygame.font.Font(None, 28)
+        nickname_text = nickname_font.render(self.nickname, True, (255, 255, 255))
+        nickname_rect = nickname_text.get_rect(center=(nameplate_width // 2, 15))
+        nameplate_surf.blit(nickname_text, nickname_rect)
+
+        # Draw rank name (center-bottom)
+        rank_font = pygame.font.Font(None, 22)
+        rank_text = rank_font.render(rank_name, True, rank_color)
+        rank_rect = rank_text.get_rect(center=(nameplate_width // 2, 33))
+        nameplate_surf.blit(rank_text, rank_rect)
+
+        # Draw XP bar (very bottom)
+        if self.level < 13:  # Only show XP bar if not at max level
+            bar_x = 50
+            bar_y = nameplate_height - 8
+            bar_width = nameplate_width - 100
+            bar_height = 4
+
+            # XP bar background
+            pygame.draw.rect(nameplate_surf, (50, 50, 70, 200),
+                           (bar_x, bar_y, bar_width, bar_height), border_radius=2)
+
+            # XP bar fill
+            xp_percentage = self.xp / self.xp_for_next_level
+            fill_width = int(bar_width * xp_percentage)
+            if fill_width > 0:
+                pygame.draw.rect(nameplate_surf, rank_color,
+                               (bar_x, bar_y, fill_width, bar_height), border_radius=2)
+
+        # Blit nameplate to screen
+        nameplate_x = self.x - nameplate_width // 2
+        screen.blit(nameplate_surf, (int(nameplate_x), int(nameplate_y)))
+
+    def draw_levelup_notification(self, screen):
+        """
+        Render level up notification with rank promotion animation.
+
+        Displays when player levels up, showing the new rank and level.
+
+        Args:
+            screen: Pygame display surface
+        """
+        if not self.levelup_animation_active:
+            return
+
+        # Calculate animation progress (0 to 1, then fade out)
+        progress = 1.0 - (self.levelup_animation_timer / 3.0)
+
+        # Animation phases: fade in (0-0.2), hold (0.2-0.8), fade out (0.8-1.0)
+        if progress < 0.2:
+            alpha = int((progress / 0.2) * 255)
+        elif progress > 0.8:
+            alpha = int((1.0 - (progress - 0.8) / 0.2) * 255)
+        else:
+            alpha = 255
+
+        # Scale animation (grows then shrinks slightly)
+        if progress < 0.3:
+            scale = 0.5 + (progress / 0.3) * 0.7  # 0.5 to 1.2
+        else:
+            scale = 1.2 - (progress - 0.3) / 0.7 * 0.2  # 1.2 to 1.0
+
+        rank_info = self.get_rank()
+        rank_name = rank_info["name"]
+        rank_color = rank_info["color"]
+
+        # Create notification surface
+        notif_width = 400
+        notif_height = 180
+        notif_surf = pygame.Surface((notif_width, notif_height), pygame.SRCALPHA)
+
+        # Draw background with glow effect
+        for i in range(5, 0, -1):
+            glow_alpha = int((alpha / 5) * (6 - i) / 5)
+            pygame.draw.rect(notif_surf, (*rank_color, glow_alpha),
+                           (i * 4, i * 4, notif_width - i * 8, notif_height - i * 8),
+                           border_radius=15)
+
+        # Main background
+        bg_alpha = int(alpha * 0.9)
+        pygame.draw.rect(notif_surf, (20, 20, 40, bg_alpha),
+                        (10, 10, notif_width - 20, notif_height - 20), border_radius=12)
+        pygame.draw.rect(notif_surf, (*rank_color, alpha),
+                        (10, 10, notif_width - 20, notif_height - 20), 3, border_radius=12)
+
+        # Draw "LEVEL UP!" text
+        levelup_font = pygame.font.Font(None, int(60 * scale))
+        levelup_text = levelup_font.render("LEVEL UP!", True, (255, 255, 255, alpha))
+        levelup_rect = levelup_text.get_rect(center=(notif_width // 2, 50))
+        notif_surf.blit(levelup_text, levelup_rect)
+
+        # Draw level number with badge
+        level_font = pygame.font.Font(None, int(70 * scale))
+        level_str = f"Level {self.level}"
+        level_text = level_font.render(level_str, True, rank_color)
+        level_rect = level_text.get_rect(center=(notif_width // 2, 105))
+
+        # Badge glow behind level
+        badge_center_x = level_rect.centerx
+        badge_center_y = level_rect.centery
+        for i in range(4, 0, -1):
+            glow_alpha = int(alpha * 0.3 / i)
+            pygame.draw.circle(notif_surf, (*rank_color, glow_alpha),
+                             (badge_center_x, badge_center_y), int(45 * scale + i * 8))
+
+        notif_surf.blit(level_text, level_rect)
+
+        # Draw rank name
+        rank_font = pygame.font.Font(None, int(40 * scale))
+        rank_text_surf = rank_font.render(rank_name, True, rank_color)
+        rank_rect = rank_text_surf.get_rect(center=(notif_width // 2, 150))
+        notif_surf.blit(rank_text_surf, rank_rect)
+
+        # Apply scale to notification surface
+        if scale != 1.0:
+            scaled_width = int(notif_width * scale)
+            scaled_height = int(notif_height * scale)
+            notif_surf = pygame.transform.smoothscale(notif_surf, (scaled_width, scaled_height))
+            notif_x = (Info.screenX - scaled_width) // 2
+            notif_y = (Info.screenY - scaled_height) // 2
+        else:
+            notif_x = (Info.screenX - notif_width) // 2
+            notif_y = (Info.screenY - notif_height) // 2
+
+        # Draw particle effects around notification
+        num_particles = 20
+        for i in range(num_particles):
+            angle = (i / num_particles) * math.pi * 2 + progress * 3
+            radius = 150 + math.sin(progress * math.pi * 4) * 30
+            px = Info.screenX // 2 + math.cos(angle) * radius
+            py = Info.screenY // 2 + math.sin(angle) * radius
+            particle_alpha = int(alpha * 0.7)
+
+            particle_surf = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pygame.draw.circle(particle_surf, (*rank_color, particle_alpha), (4, 4), 4)
+            screen.blit(particle_surf, (int(px) - 4, int(py) - 4))
+
+        # Blit notification to screen
+        screen.blit(notif_surf, (int(notif_x), int(notif_y)))
+
     def draw(self, screen):
         """
-        Render all player components: shield, droids, and ship.
+        Render all player components: shield, droids, ship, and nameplate.
 
         Args:
             screen: Pygame display surface
@@ -880,6 +1148,12 @@ class Player:
 
             pygame.draw.polygon(screen, (200, 220, 255), points)
             pygame.draw.polygon(screen, (255, 255, 255), points, 2)
+
+        # Draw nameplate below ship
+        self.draw_nameplate(screen)
+
+        # Draw level up notification (screen-centered, appears on top)
+        self.draw_levelup_notification(screen)
 
     def check_portal_collision(self, portals):
         """
@@ -1230,6 +1504,10 @@ def main():
                             player.lasers.remove(laser)
 
                         if is_destroyed and enemy in enemies:
+                            # Award XP and track kill
+                            player.add_xp(XP_PER_ENEMY_KILL)
+                            player.total_kills += 1
+
                             if player.target_enemy == enemy:
                                 player.target_enemy = None
                             enemies.remove(enemy)
