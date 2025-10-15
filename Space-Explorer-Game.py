@@ -924,24 +924,24 @@ class Player:
         rank_color = rank_info["color"]
 
         # Nameplate position (below ship)
-        nameplate_y = self.y + 80
+        nameplate_y = self.y + 110
 
         # Create nameplate surface with transparency
-        nameplate_width = 280
-        nameplate_height = 50
+        nameplate_width = 200
+        nameplate_height = 36
         nameplate_surf = pygame.Surface((nameplate_width, nameplate_height), pygame.SRCALPHA)
 
         # Draw background panel with glow
         bg_alpha = 180
         pygame.draw.rect(nameplate_surf, (20, 20, 40, bg_alpha),
-                        (0, 0, nameplate_width, nameplate_height), border_radius=8)
+                        (0, 0, nameplate_width, nameplate_height), border_radius=6)
         pygame.draw.rect(nameplate_surf, (*rank_color, 200),
-                        (0, 0, nameplate_width, nameplate_height), 2, border_radius=8)
+                        (0, 0, nameplate_width, nameplate_height), 2, border_radius=6)
 
         # Draw rank badge (left side)
-        badge_x = 10
+        badge_x = 7
         badge_y = nameplate_height // 2
-        badge_radius = 15
+        badge_radius = 11
 
         # Badge outer glow
         for i in range(3, 0, -1):
@@ -956,29 +956,29 @@ class Player:
                           (badge_x + badge_radius, badge_y), badge_radius, 2)
 
         # Draw level number in badge
-        level_font = pygame.font.Font(None, 24)
+        level_font = pygame.font.Font(None, 18)
         level_text = level_font.render(str(self.level), True, (255, 255, 255))
         level_rect = level_text.get_rect(center=(badge_x + badge_radius, badge_y))
         nameplate_surf.blit(level_text, level_rect)
 
         # Draw nickname (center-top)
-        nickname_font = pygame.font.Font(None, 28)
+        nickname_font = pygame.font.Font(None, 20)
         nickname_text = nickname_font.render(self.nickname, True, (255, 255, 255))
-        nickname_rect = nickname_text.get_rect(center=(nameplate_width // 2, 15))
+        nickname_rect = nickname_text.get_rect(center=(nameplate_width // 2, 10))
         nameplate_surf.blit(nickname_text, nickname_rect)
 
         # Draw rank name (center-bottom)
-        rank_font = pygame.font.Font(None, 22)
+        rank_font = pygame.font.Font(None, 16)
         rank_text = rank_font.render(rank_name, True, rank_color)
-        rank_rect = rank_text.get_rect(center=(nameplate_width // 2, 33))
+        rank_rect = rank_text.get_rect(center=(nameplate_width // 2, 24))
         nameplate_surf.blit(rank_text, rank_rect)
 
         # Draw XP bar (very bottom)
         if self.level < 13:  # Only show XP bar if not at max level
-            bar_x = 50
-            bar_y = nameplate_height - 8
-            bar_width = nameplate_width - 100
-            bar_height = 4
+            bar_x = 35
+            bar_y = nameplate_height - 6
+            bar_width = nameplate_width - 70
+            bar_height = 3
 
             # XP bar background
             pygame.draw.rect(nameplate_surf, (50, 50, 70, 200),
