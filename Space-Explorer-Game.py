@@ -384,10 +384,23 @@ class Player:
             (5, -75),   # Left droid 1
             (5, 75),  # Left droid 2
             (-15, -65),   # Right droid 2
-            
-                        (-100, 0),   # Right droid 2
+
+            (-80, 0),   # Right droid 2
+            (-100, 20),   # Right droid 2
+            (-120, 0),   # Right droid 2
+            (-100, -20),   # Right droid 2
 
         ]
+
+        # Droid group rotation - all droids rotate together with delay
+        self.droid_group_rotation = 0.0
+        self.droid_follow_speed = 3.0  # Lower = more lag, Higher = faster follow (per second)
+
+        # Energy shield animation
+        self.shield_timer = 0.0  # Timer for pulse trigger
+        self.shield_pulse_progress = 0.0  # 0 to 1, pulse animation progress
+        self.shield_rotation = 0.0  # Rotating hexagon pattern
+        self.shield_scanline_offset = 0.0  # Moving scanlines
 
     def find_nearest_enemy(self, enemies):
         """Find the nearest enemy to target"""
@@ -519,11 +532,104 @@ class Player:
             star['x'] -= move_x * self.speed * dt * 0.3 * star['speed']
             star['y'] -= move_y * self.speed * dt * 0.3 * star['speed']
 
+        # Update droid group rotation with smooth follow (lag effect)
+        # Calculate shortest angle difference
+        angle_diff = self.rotation - self.droid_group_rotation
+
+        # Normalize to -180 to 180 range
+        while angle_diff > 180:
+            angle_diff -= 360
+        while angle_diff < -180:
+            angle_diff += 360
+
+        # Smoothly interpolate toward target rotation
+        self.droid_group_rotation += angle_diff * self.droid_follow_speed * dt
+
+        # Update shield animation
+        self.shield_timer += dt
+        self.shield_rotation += dt * 30  # Rotate hexagon pattern slowly
+        self.shield_scanline_offset += dt * 100  # Move scanlines
+
+        # Trigger pulse every 2 seconds
+        if self.shield_timer >= 2.0:
+            self.shield_timer = 0.0
+            self.shield_pulse_progress = 0.0
+
+        # Update pulse animation (0 to 1, then stays at 1)
+        if self.shield_pulse_progress < 1.0:
+            self.shield_pulse_progress += dt * 2.0  # 0.5 second pulse duration
+            if self.shield_pulse_progress > 1.0:
+                self.shield_pulse_progress = 1.0
+
+    def draw_shield(self, screen):
+        """Draw hexagonal energy shield with pulse animation"""
+        shield_radius = 60  # Base shield radius
+
+        # Calculate pulse wave effect (0 = start of pulse, 1 = end)
+        pulse_intensity = 1.0 - self.shield_pulse_progress  # Inverted for fade out
+        pulse_expansion = self.shield_pulse_progress * 20  # Expands outward
+
+        # Create shield surface with alpha
+        shield_size = int((shield_radius + pulse_expansion) * 2 + 50)
+        shield_surf = pygame.Surface((shield_size, shield_size), pygame.SRCALPHA)
+        center = shield_size // 2
+
+        # Draw hexagonal segments
+        num_segments = 6
+        for i in range(num_segments):
+            angle = math.radians(self.shield_rotation + i * 60)
+
+            # Hexagon vertices
+            hex_points = []
+            for j in range(6):
+                hex_angle = angle + math.radians(j * 60)
+                x = center + math.cos(hex_angle) * (shield_radius + pulse_expansion * 0.5)
+                y = center + math.sin(hex_angle) * (shield_radius + pulse_expansion * 0.5)
+                hex_points.append((x, y))
+
+            # Draw hexagon outline with pulse effect
+            hex_alpha = int(100 * pulse_intensity + 30)  # 30-130 alpha range
+            hex_color = (0, 200, 255, hex_alpha)
+            pygame.draw.polygon(shield_surf, hex_color, hex_points, 2)
+
+            # Draw energy glow at vertices
+            for point in hex_points:
+                glow_alpha = int(150 * pulse_intensity + 50)
+                pygame.draw.circle(shield_surf, (100, 220, 255, glow_alpha),
+                                 (int(point[0]), int(point[1])), 3)
+
+        # Draw main shield circle with glow
+        for glow_layer in range(3, 0, -1):
+            glow_radius = shield_radius + pulse_expansion + glow_layer * 8
+            glow_alpha = int((80 / glow_layer) * pulse_intensity + 20)
+            pygame.draw.circle(shield_surf, (50, 180, 255, glow_alpha),
+                             (center, center), int(glow_radius), 2)
+
+        # Draw energy core circle
+        core_alpha = int(120 * pulse_intensity + 40)
+        pygame.draw.circle(shield_surf, (150, 230, 255, core_alpha),
+                         (center, center), int(shield_radius + pulse_expansion), 1)
+
+        # Pulse wave ring (expands outward)
+        if pulse_intensity > 0.3:
+            wave_radius = shield_radius + pulse_expansion
+            wave_alpha = int(200 * pulse_intensity)
+            pygame.draw.circle(shield_surf, (150, 240, 255, wave_alpha),
+                             (center, center), int(wave_radius), 3)
+
+        # Blit shield to screen
+        shield_x = self.x - center
+        shield_y = self.y - center
+        screen.blit(shield_surf, (int(shield_x), int(shield_y)))
+
     def draw(self, screen):
-        # Draw droids first (so ship appears on top)
-        for droid_offset_x, droid_offset_y in self.droid_positions:
-            # Rotate offset based on ship rotation
-            rad = math.radians(self.rotation)
+        # Draw shield first (behind everything)
+        self.draw_shield(screen)
+
+        # Draw droids
+        for idx, (droid_offset_x, droid_offset_y) in enumerate(self.droid_positions):
+            # Rotate offset based on droid group rotation (position follows with delay)
+            rad = math.radians(self.droid_group_rotation)
             rotated_x = droid_offset_x * math.cos(rad) - droid_offset_y * math.sin(rad)
             rotated_y = droid_offset_x * math.sin(rad) + droid_offset_y * math.cos(rad)
 
@@ -532,8 +638,8 @@ class Player:
             droid_y = self.y + rotated_y
 
             if Assets.droid_image:
-                # Rotate droid image - droid image also points up at 90 degrees by default
-                rotated_droid = pygame.transform.rotate(Assets.droid_image, -self.rotation - 90)
+                # Rotate droid image - use group's delayed rotation
+                rotated_droid = pygame.transform.rotate(Assets.droid_image, -self.droid_group_rotation - 90)
                 droid_rect = rotated_droid.get_rect(center=(int(droid_x), int(droid_y)))
 
                 # Draw droid
@@ -852,6 +958,9 @@ while True:
             player.world_x = 0
             player.world_y = 0
             player.target_enemy = None  # Clear target when changing maps
+
+            # Reset droid group rotation to match ship
+            player.droid_group_rotation = player.rotation
 
             info.game_state = "WarpingIn"
             info.warp_progress = 1.0
