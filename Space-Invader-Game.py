@@ -61,11 +61,12 @@ class Assets:
         
 class Info:
     """ Will hold only basic
-    information that is reuseable 
+    information that is reuseable
     but mutable for the game here"""
 
-    screenX = 1920
-    screenY = 1080
+    # Optimized for M4 MacBook Pro (14" or 16")
+    screenX = 1440
+    screenY = 900
     iconX = 64
     iconY = 64
 
@@ -74,11 +75,62 @@ class Info:
         self.ticks = 0
         self.dt = 0
         self.game_state = "Playing"
-        self.level = 1
+        self.level = 19  # START AT LEVEL 19
+
+        # Screen shake effect
+        self.screen_shake_intensity = 0
+        self.screen_shake_duration = 0
+        self.screen_offset_x = 0
+        self.screen_offset_y = 0
+
+        # Background stars for parallax
+        self.stars = []
+        self.init_stars()
     
     def update_time(self):
         self.dt = self.clock.tick(60) / 1000
         self.ticks = pygame.time.get_ticks()
+
+        # Update screen shake
+        if self.screen_shake_duration > 0:
+            self.screen_shake_duration -= self.dt
+            self.screen_offset_x = random.randint(-int(self.screen_shake_intensity), int(self.screen_shake_intensity))
+            self.screen_offset_y = random.randint(-int(self.screen_shake_intensity), int(self.screen_shake_intensity))
+        else:
+            self.screen_offset_x = 0
+            self.screen_offset_y = 0
+            self.screen_shake_intensity = 0
+
+    def init_stars(self):
+        """Initialize background stars for parallax effect"""
+        for _ in range(200):
+            star = {
+                'x': random.randint(0, self.screenX),
+                'y': random.randint(0, self.screenY),
+                'speed': random.uniform(0.5, 3),
+                'size': random.randint(1, 3),
+                'brightness': random.randint(100, 255)
+            }
+            self.stars.append(star)
+
+    def update_stars(self):
+        """Update star positions for parallax scrolling"""
+        for star in self.stars:
+            star['y'] += star['speed']
+            if star['y'] > self.screenY:
+                star['y'] = 0
+                star['x'] = random.randint(0, self.screenX)
+
+    def draw_stars(self, screen):
+        """Draw stars on background"""
+        for star in self.stars:
+            color = (star['brightness'], star['brightness'], star['brightness'])
+            pygame.draw.circle(screen, color, (int(star['x']), int(star['y'])), star['size'])
+
+    def trigger_screen_shake(self, intensity=10, duration=0.2):
+        """Trigger screen shake effect"""
+        self.screen_shake_intensity = intensity
+        self.screen_shake_duration = duration
 
     def show_message(self, text, duration=1000):
         font = pygame.font.Font(None, 50)
@@ -89,21 +141,21 @@ class Info:
         pygame.time.delay(duration)
 
     def pause_screen(self, message):
-            font = pygame.font.Font(None, 50)  
+            font = pygame.font.Font(None, 50)
             overlay = pygame.Surface((Info.screenX, Info.screenY), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 180))
-            text = font.render(message, True, (255, 255, 255)) 
+            text = font.render(message, True, (255, 255, 255))
             text_rect = text.get_rect(center=(self.screenX//2, self.screenY//2))
             screen.blit(text, text_rect)
 
 class Player:
-    """ Will hold instanced 
+    """ Will hold instanced
     information for the Player"""
 
     def __init__(self):
-        self.speed = 4
-        self.player_lives = 3
-        self.credits = 0
+        self.speed = 8  # MAX SPEED
+        self.player_lives = 5  # Extra lives
+        self.credits = 50000  # Lots of credits to start
         self.inventory = []
         self.bullets = []
         self.points = 0
@@ -111,12 +163,34 @@ class Player:
         self.playerX = Info.screenX / 2
         self.playerY = Info.screenY - Info.iconY - 10
         self.player_box = pygame.Rect(self.playerX, self.playerY, Info.iconX, Info.iconY)
-        
-        self.triple_shot_unlocked = False
-        self.side_cannon_count = 0 
+
+        self.triple_shot_unlocked = True  # START WITH TRIPLE SHOT
+        self.side_cannon_count = 2  # START WITH BOTH SIDE CANNONS
         self.side_cannon_max = 2
-        self.shield = 0
+        self.shield = 3  # START WITH FULL SHIELDS
         self.shield_max = 3
+
+        # Enhanced ship features
+        self.dash_cooldown = 0
+        self.dash_duration = 0
+        self.dash_speed = 15
+        self.is_dashing = False
+        self.dash_direction = [0, 0]
+
+        # Visual effects
+        self.engine_particles = []
+        self.ship_rotation = 0
+        self.target_rotation = 0
+
+        # Advanced weapon systems
+        self.weapon_level = 1
+        self.weapon_heat = 0
+        self.max_heat = 100
+        self.overheated = False
+
+        # Power-up timers
+        self.rapid_fire_timer = 0
+        self.damage_boost_timer = 0
 
         self.shield_coin_rect = Assets.shield_coin_image[0].get_rect(
             topleft=(random.randint(50, Info.screenX - 50), 
@@ -158,16 +232,106 @@ class Player:
 
     def player_movement(self):
         keys = pygame.key.get_pressed()
+
+        # Dash cooldown management
+        if self.dash_cooldown > 0:
+            self.dash_cooldown -= info.dt
+
+        # Execute dash
+        if self.is_dashing:
+            self.dash_duration -= info.dt
+            if self.dash_duration <= 0:
+                self.is_dashing = False
+            else:
+                self.playerX += self.dash_direction[0] * self.dash_speed * info.dt * 60
+                self.playerY += self.dash_direction[1] * self.dash_speed * info.dt * 60
+                # Create dash trail particles
+                self.create_dash_particle()
+                return
+
+        # Initiate dash with SHIFT
+        if keys[pygame.K_LSHIFT] and self.dash_cooldown <= 0:
+            move_x = 0
+            move_y = 0
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                move_x = -1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                move_x = 1
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                move_y = -1
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                move_y = 1
+
+            if move_x != 0 or move_y != 0:
+                # Normalize diagonal movement
+                length = math.sqrt(move_x**2 + move_y**2)
+                self.dash_direction = [move_x/length, move_y/length]
+                self.is_dashing = True
+                self.dash_duration = 0.2  # 200ms dash
+                self.dash_cooldown = 1.5  # 1.5s cooldown
+                return
+
+        # Normal movement with smooth acceleration
+        move_speed = self.speed * info.dt * 60
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.playerX -= self.speed * info.dt * 60
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.playerX += self.speed * info.dt * 60
+            self.playerX -= move_speed
+            self.target_rotation = 15  # Tilt left
+        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            self.playerX += move_speed
+            self.target_rotation = -15  # Tilt right
+        else:
+            self.target_rotation = 0  # Return to center
+
         if keys[pygame.K_UP] or keys[pygame.K_w]:
-            self.playerY -= self.speed * info.dt * 60
+            self.playerY -= move_speed
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            self.playerY += self.speed * info.dt * 60 
+            self.playerY += move_speed
+
+        # Smooth rotation
+        self.ship_rotation += (self.target_rotation - self.ship_rotation) * 0.1
+
+        # Create engine particles during movement
+        if keys[pygame.K_UP] or keys[pygame.K_DOWN] or keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]:
+            self.create_engine_particle()
+
         if keys[pygame.K_l]:
             self.credits += 5000
+
+    def create_engine_particle(self):
+        """Create particle effects from ship engines"""
+        particle = {
+            'x': self.playerX + Info.iconX / 2 + random.randint(-5, 5),
+            'y': self.playerY + Info.iconY,
+            'vel_y': random.uniform(2, 4),
+            'vel_x': random.uniform(-0.5, 0.5),
+            'lifetime': random.uniform(0.3, 0.6),
+            'size': random.randint(2, 4),
+            'color': random.choice([(255, 100, 0), (255, 150, 0), (255, 200, 0)])
+        }
+        self.engine_particles.append(particle)
+
+    def create_dash_particle(self):
+        """Create particle trail during dash"""
+        for _ in range(3):
+            particle = {
+                'x': self.playerX + Info.iconX / 2 + random.randint(-10, 10),
+                'y': self.playerY + Info.iconY / 2 + random.randint(-10, 10),
+                'vel_y': random.uniform(-1, 1),
+                'vel_x': random.uniform(-1, 1),
+                'lifetime': random.uniform(0.2, 0.4),
+                'size': random.randint(3, 6),
+                'color': (0, 150, 255)
+            }
+            self.engine_particles.append(particle)
+
+    def update_particles(self, dt):
+        """Update and remove expired particles"""
+        for particle in self.engine_particles[:]:
+            particle['lifetime'] -= dt
+            particle['y'] += particle['vel_y']
+            particle['x'] += particle['vel_x']
+            if particle['lifetime'] <= 0:
+                self.engine_particles.remove(particle)
 
     def update_position(self):
         self.playerX = max(0, min(self.playerX, Info.screenX - Info.iconX))
@@ -175,7 +339,31 @@ class Player:
         self.player_box.topleft = (self.playerX, self.playerY)
 
     def draw_player(self, screen):
-        screen.blit(Assets.player_image, self.player_box)        
+        # Draw particles first (behind ship)
+        for particle in self.engine_particles:
+            alpha = int(255 * (particle['lifetime'] / 0.6))
+            color = (*particle['color'], min(alpha, 255))
+            s = pygame.Surface((particle['size']*2, particle['size']*2), pygame.SRCALPHA)
+            pygame.draw.circle(s, color, (particle['size'], particle['size']), particle['size'])
+            screen.blit(s, (particle['x'] - particle['size'], particle['y'] - particle['size']))
+
+        # Draw ship with rotation
+        if abs(self.ship_rotation) > 0.5:
+            rotated_image = pygame.transform.rotate(Assets.player_image, self.ship_rotation)
+            rotated_rect = rotated_image.get_rect(center=self.player_box.center)
+            screen.blit(rotated_image, rotated_rect)
+        else:
+            screen.blit(Assets.player_image, self.player_box)
+
+        # Draw dash cooldown indicator
+        if self.dash_cooldown > 0:
+            cooldown_percent = self.dash_cooldown / 1.5
+            bar_width = Info.iconX
+            bar_height = 4
+            bar_x = self.playerX
+            bar_y = self.playerY - 10
+            pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
+            pygame.draw.rect(screen, (0, 150, 255), (bar_x, bar_y, bar_width * (1 - cooldown_percent), bar_height))        
 
 class Button:
     def __init__(self, x, y, width=172, height=71, text="Button", color=(0, 0 ,0), hover_color=(255, 255, 255), action=None):
@@ -409,6 +597,39 @@ class EnemyManager:
             for bullet in enemy.bullets[:]:
                 pygame.draw.rect(screen, (255, 0, 0), bullet)
 
+class Bullet:
+    """Custom bullet class to hold type and rect"""
+    def __init__(self, x, y, width, height, bullet_type='normal'):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.bullet_type = bullet_type
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.bottom = y + height
+        self.top = y
+
+        # Trail system for laser effects
+        self.trail = []
+        self.max_trail_length = 8
+
+    def colliderect(self, other):
+        return self.rect.colliderect(other)
+
+    def update_position(self):
+        self.rect.y = self.y
+        self.top = self.y
+        self.bottom = self.y + self.height
+
+        # Add current position to trail
+        self.trail.append({'x': self.x + self.width/2, 'y': self.y, 'age': 0})
+
+        # Update trail age and remove old ones
+        for t in self.trail[:]:
+            t['age'] += 1
+            if t['age'] > self.max_trail_length:
+                self.trail.remove(t)
+
 class Weapons:
     """ Mechanics and the
      visuals of game weapons """
@@ -422,64 +643,231 @@ class Weapons:
         self.bullet_speed = 500
         self.bullet_cooldown = 200
 
+        # Bullet types and properties
+        self.bullet_types = {
+            'normal': {'damage': 1, 'color': (255, 255, 0), 'size': (4, 10)},
+            'power': {'damage': 2, 'color': (255, 100, 0), 'size': (6, 12)},
+            'laser': {'damage': 1, 'color': (0, 255, 255), 'size': (3, 15)},
+            'plasma': {'damage': 3, 'color': (255, 0, 255), 'size': (8, 8)}
+        }
+
+        # Muzzle flash effects
+        self.muzzle_flashes = []
+
     def weapon_mechanic(self):
+        # Add weapon heat
+        if not self.player.overheated:
+            self.player.weapon_heat = min(self.player.max_heat, self.player.weapon_heat + 5)
+            if self.player.weapon_heat >= self.player.max_heat:
+                self.player.overheated = True
+
+        bullet_type = 'power' if self.player.damage_boost_timer > 0 else 'normal'
 
         if self.player.triple_shot_unlocked:
         # Fire 3 bullets: center, left, right
             Assets.triple_sound.set_volume(0.5)
             Assets.triple_sound.play() # Audio file
 
-            bullet1 = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
-            bullet2 = pygame.Rect(self.player.player_box.centerx - 17, self.player.player_box.top - 10, 4, 10)
-            bullet3 = pygame.Rect(self.player.player_box.centerx + 13, self.player.player_box.top - 10, 4, 10)
+            bullet1 = Bullet(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10, bullet_type)
+            bullet2 = Bullet(self.player.player_box.centerx - 17, self.player.player_box.top - 10, 4, 10, bullet_type)
+            bullet3 = Bullet(self.player.player_box.centerx + 13, self.player.player_box.top - 10, 4, 10, bullet_type)
             self.player.bullets.extend([bullet1, bullet2, bullet3])
+            self.create_muzzle_flash(self.player.player_box.centerx, self.player.player_box.top)
         else:
         # Single bullet, basic beginner.
             Assets.starter_sound.set_volume(0.3)
             Assets.starter_sound.play()
-            bullet = pygame.Rect(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10)
-            self.player.bullets.append(bullet)        
+            bullet = Bullet(self.player.player_box.centerx - 2, self.player.player_box.top - 10, 4, 10, bullet_type)
+            self.player.bullets.append(bullet)
+            self.create_muzzle_flash(self.player.player_box.centerx, self.player.player_box.top)
 
         if self.player.side_cannon_count >= 1:
             Assets.starter_sound.set_volume(0.2)
             Assets.starter_sound.play()
-            left_bullet = pygame.Rect(self.player.player_box.centerx - 77, self.player.player_box.top - 10, 4, 10)
+            left_bullet = Bullet(self.player.player_box.centerx - 77, self.player.player_box.top - 10, 4, 10, 'laser')
             self.player.bullets.append(left_bullet)
+            self.create_muzzle_flash(self.player.player_box.centerx - 77, self.player.player_box.top)
 
         if self.player.side_cannon_count >= 2:
             Assets.starter_sound.set_volume(0.2)
             Assets.starter_sound.play()
-            right_bullet = pygame.Rect(self.player.player_box.centerx + 77, self.player.player_box.top - 10, 4, 10)
+            right_bullet = Bullet(self.player.player_box.centerx + 77, self.player.player_box.top - 10, 4, 10, 'laser')
             self.player.bullets.append(right_bullet)
+            self.create_muzzle_flash(self.player.player_box.centerx + 77, self.player.player_box.top)
+
+    def create_muzzle_flash(self, x, y):
+        """Create visual muzzle flash effect"""
+        flash = {
+            'x': x,
+            'y': y,
+            'lifetime': 0.05,
+            'size': random.randint(10, 15)
+        }
+        self.muzzle_flashes.append(flash)
 
     def shooting_function(self):
         keys = pygame.key.get_pressed()
         now = pygame.time.get_ticks()
 
-        if keys[pygame.K_SPACE] and (now - self.last_shot_time) >= self.bullet_cooldown:
+        # Weapon heat cooldown
+        if self.player.weapon_heat > 0:
+            self.player.weapon_heat = max(0, self.player.weapon_heat - 0.5)
+        if self.player.overheated and self.player.weapon_heat <= 0:
+            self.player.overheated = False
+
+        # Rapid fire mode reduces cooldown
+        active_cooldown = self.bullet_cooldown
+        if self.player.rapid_fire_timer > 0:
+            active_cooldown = self.bullet_cooldown // 2
+
+        if keys[pygame.K_SPACE] and (now - self.last_shot_time) >= active_cooldown and not self.player.overheated:
             self.last_shot_time = now
             self.weapon_mechanic()
 
     def update_bullets(self, screen):
+        # Update and draw muzzle flashes
+        for flash in self.muzzle_flashes[:]:
+            flash['lifetime'] -= self.info.dt
+            if flash['lifetime'] <= 0:
+                self.muzzle_flashes.remove(flash)
+            else:
+                alpha = int(255 * (flash['lifetime'] / 0.05))
+                s = pygame.Surface((flash['size']*2, flash['size']*2), pygame.SRCALPHA)
+                pygame.draw.circle(s, (255, 255, 150, alpha), (flash['size'], flash['size']), flash['size'])
+                screen.blit(s, (flash['x'] - flash['size'], flash['y'] - flash['size']))
+
         for bullet in self.player.bullets[:]:
             bullet.y -= self.bullet_speed * self.info.dt
-            pygame.draw.rect(screen, (255, 255, 0), bullet)
+            bullet.update_position()
+
+            # Get bullet properties
+            bullet_type = getattr(bullet, 'bullet_type', 'normal')
+            bullet_props = self.bullet_types.get(bullet_type, self.bullet_types['normal'])
+            color = bullet_props['color']
+
+            # Draw laser trail with fading effect
+            for i, trail_pos in enumerate(bullet.trail):
+                trail_alpha = int(255 * (1 - trail_pos['age'] / bullet.max_trail_length))
+                trail_size = max(1, int(bullet.width * (1 - trail_pos['age'] / bullet.max_trail_length)))
+
+                # Draw trail glow
+                glow_size = trail_size + 4
+                glow_surf = pygame.Surface((glow_size*2, glow_size*2), pygame.SRCALPHA)
+                glow_alpha = int(trail_alpha * 0.5)
+                pygame.draw.circle(glow_surf, (*color, glow_alpha), (glow_size, glow_size), glow_size)
+                screen.blit(glow_surf, (trail_pos['x'] - glow_size, trail_pos['y'] - glow_size))
+
+                # Draw trail core
+                trail_surf = pygame.Surface((trail_size*2, trail_size*2), pygame.SRCALPHA)
+                pygame.draw.circle(trail_surf, (*color, trail_alpha), (trail_size, trail_size), trail_size)
+                screen.blit(trail_surf, (trail_pos['x'] - trail_size, trail_pos['y'] - trail_size))
+
+            # Draw main bullet with multiple glow layers for bloom effect
+            # Outer glow (largest, most transparent)
+            for glow_layer in range(3, 0, -1):
+                glow_size = glow_layer * 8
+                glow_alpha = int(80 / glow_layer)
+                glow_surface = pygame.Surface((bullet.width + glow_size*2, bullet.height + glow_size*2), pygame.SRCALPHA)
+                glow_rect = pygame.Rect(glow_size, glow_size, bullet.width, bullet.height)
+                pygame.draw.rect(glow_surface, (*color, glow_alpha), glow_rect, border_radius=2)
+                screen.blit(glow_surface, (bullet.x - glow_size, bullet.y - glow_size))
+
+            # Draw bullet core (brightest)
+            pygame.draw.rect(screen, (255, 255, 255), bullet.rect)
+            # Draw colored overlay
+            color_surf = pygame.Surface((bullet.width, bullet.height), pygame.SRCALPHA)
+            pygame.draw.rect(color_surf, (*color, 200), (0, 0, bullet.width, bullet.height))
+            screen.blit(color_surf, (bullet.x, bullet.y))
 
             if bullet.bottom < 0:
                 self.player.bullets.remove(bullet)
                 continue
 
-            for enemy in self.enemy.enemies[:]: 
+            for enemy in self.enemy.enemies[:]:
                 if bullet.colliderect(enemy.rect):
-                    enemy.lives -= 1
+                    damage = bullet_props['damage']
+                    enemy.lives -= damage
+
+                    # Trigger screen shake on hit
+                    self.info.trigger_screen_shake(3, 0.1)
+
+                    # Create hit effect
+                    self.create_hit_effect(enemy.rect.centerx, enemy.rect.centery)
+
                     if enemy.lives <= 0:
-                        self.enemy.enemies.remove(enemy) 
-                        self.player.points += enemy.points 
-                        self.player.credits += enemy.credits  
+                        # Bigger screen shake on enemy death
+                        self.info.trigger_screen_shake(8, 0.3)
+                        self.create_explosion_effect(enemy.rect.centerx, enemy.rect.centery)
+                        self.enemy.enemies.remove(enemy)
+                        self.player.points += enemy.points
+                        self.player.credits += enemy.credits
 
                     if bullet in self.player.bullets:
                         self.player.bullets.remove(bullet)
                     break
+
+    def create_hit_effect(self, x, y):
+        """Create small hit spark effect with electric sparks"""
+        for _ in range(12):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 6)
+            particle = {
+                'x': x,
+                'y': y,
+                'vel_x': math.cos(angle) * speed,
+                'vel_y': math.sin(angle) * speed,
+                'lifetime': random.uniform(0.15, 0.35),
+                'size': random.randint(2, 5),
+                'color': random.choice([(255, 255, 100), (255, 220, 0), (255, 255, 255)])
+            }
+            self.player.engine_particles.append(particle)
+
+    def create_explosion_effect(self, x, y):
+        """Create spectacular explosion effect when enemy dies"""
+        # Main explosion particles
+        for _ in range(30):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(3, 10)
+            particle = {
+                'x': x,
+                'y': y,
+                'vel_x': math.cos(angle) * speed,
+                'vel_y': math.sin(angle) * speed,
+                'lifetime': random.uniform(0.4, 1.0),
+                'size': random.randint(4, 8),
+                'color': random.choice([(255, 100, 0), (255, 150, 0), (255, 200, 0), (255, 50, 0)])
+            }
+            self.player.engine_particles.append(particle)
+
+        # Secondary sparks
+        for _ in range(20):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(5, 12)
+            particle = {
+                'x': x,
+                'y': y,
+                'vel_x': math.cos(angle) * speed,
+                'vel_y': math.sin(angle) * speed,
+                'lifetime': random.uniform(0.2, 0.5),
+                'size': random.randint(2, 4),
+                'color': random.choice([(255, 255, 100), (255, 255, 200), (255, 200, 100)])
+            }
+            self.player.engine_particles.append(particle)
+
+        # Smoke particles
+        for _ in range(15):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(1, 4)
+            particle = {
+                'x': x,
+                'y': y,
+                'vel_x': math.cos(angle) * speed,
+                'vel_y': math.sin(angle) * speed - 2,  # Rise upward
+                'lifetime': random.uniform(0.6, 1.2),
+                'size': random.randint(6, 12),
+                'color': random.choice([(100, 100, 100), (80, 80, 80), (120, 120, 120)])
+            }
+            self.player.engine_particles.append(particle)
 
 class Movement:
     """ Contains collision checks between
@@ -749,6 +1137,7 @@ class Animations:
 
     def screen_text(self, screen):
         font = pygame.font.Font(None, 35)
+        small_font = pygame.font.Font(None, 25)
 
         points_text = font.render(f"Score: {self.player.points}", True, (255, 255, 255))
         points_rect = points_text.get_rect()
@@ -759,6 +1148,42 @@ class Animations:
         level_rect = level_text.get_rect()
         level_rect.topright = (self.info.screenX - 35, 10)
         screen.blit(level_text, level_rect)
+
+        # Weapon heat indicator
+        heat_bar_width = 200
+        heat_bar_height = 20
+        heat_bar_x = self.info.screenX / 2 - heat_bar_width / 2
+        heat_bar_y = 10
+
+        # Background
+        pygame.draw.rect(screen, (50, 50, 50), (heat_bar_x, heat_bar_y, heat_bar_width, heat_bar_height))
+
+        # Heat bar
+        heat_percent = self.player.weapon_heat / self.player.max_heat
+        heat_width = heat_bar_width * heat_percent
+
+        if self.player.overheated:
+            heat_color = (255, 0, 0)
+            overheat_text = small_font.render("OVERHEATED!", True, (255, 0, 0))
+            screen.blit(overheat_text, (heat_bar_x + heat_bar_width / 2 - 60, heat_bar_y - 25))
+        elif heat_percent > 0.7:
+            heat_color = (255, 165, 0)
+        else:
+            heat_color = (0, 255, 0)
+
+        pygame.draw.rect(screen, heat_color, (heat_bar_x, heat_bar_y, heat_width, heat_bar_height))
+        pygame.draw.rect(screen, (255, 255, 255), (heat_bar_x, heat_bar_y, heat_bar_width, heat_bar_height), 2)
+
+        heat_text = small_font.render("WEAPON HEAT", True, (255, 255, 255))
+        screen.blit(heat_text, (heat_bar_x, heat_bar_y + heat_bar_height + 5))
+
+        # Dash cooldown indicator (bottom right)
+        if self.player.dash_cooldown > 0:
+            dash_text = small_font.render(f"Dash: {self.player.dash_cooldown:.1f}s", True, (100, 150, 255))
+            screen.blit(dash_text, (self.info.screenX - 150, self.info.screenY - 50))
+        else:
+            dash_text = small_font.render("Dash: READY [SHIFT]", True, (0, 255, 100))
+            screen.blit(dash_text, (self.info.screenX - 200, self.info.screenY - 50))
 
 class Inputs:
     """Keyboard inputs will effect
@@ -836,7 +1261,13 @@ while True:
         inputs.keyboard_inputs([event])
 
     info.update_time()
-    screen.fill((0, 0, 0))
+
+    # Fill background with deep space black
+    screen.fill((5, 5, 15))
+
+    # Draw animated stars background
+    info.update_stars()
+    info.draw_stars(screen)
 
     if info.game_state == "Paused":
         info.pause_screen("Q to Quit, S to Shop or C to Continue (Paused)")
@@ -849,6 +1280,7 @@ while True:
     elif info.game_state == "Playing":
         player.player_movement()
         player.update_position()
+        player.update_particles(info.dt)  # Update particle effects
         player.draw_player(screen)
         animated.side_cannon(screen)
 
